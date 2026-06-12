@@ -109,7 +109,7 @@ const client = new RestClientV5({
 </ParamField>
 
 <ParamField path="customSignMessageFn" type="(message: string, secret: string) => Promise<string>">
-  Provide a custom signing function to replace the default Web Crypto API implementation. For example, use Node.js `crypto.createHmac` for significantly faster HMAC signing in high-throughput scenarios. See `examples/fasterHmacSign.ts` in the repository for a complete demonstration.
+  Provide a custom signing function to replace the default Web Crypto API implementation. For example, use Node.js `crypto.createHmac` for significantly faster HMAC signing in high-throughput scenarios. See `examples/Auth/fasterHmacSign.ts` in the repository for a complete demonstration.
 </ParamField>
 
 ### Proxy Configuration
@@ -216,8 +216,20 @@ const ws = new WebsocketClient({
   Custom signing function, identical in purpose to the REST client option. Useful for Node.js `crypto.createHmac`-based performance improvements.
 </ParamField>
 
+<ParamField path="market" type="'v5'" default="'v5'">
+  The API market group to connect to. Only `'v5'` is currently supported. You do not normally need to set this explicitly.
+</ParamField>
+
+<ParamField path="restOptions" type="RestClientOptions">
+  REST client options to use when the WebSocket client needs to make internal REST calls (for example, to fetch server time for authentication). Accepts the same fields as the `RestClientV5` options object.
+</ParamField>
+
+<ParamField path="requestOptions" type="AxiosRequestConfig">
+  Additional Axios request config options forwarded to internal REST calls made by the WebSocket client. Useful for proxy configuration or custom timeout values on those requests.
+</ParamField>
+
 <ParamField path="wsOptions" type="object">
-  Low-level options passed directly to the underlying `isomorphic-ws` constructor, such as `agent` for proxy support or `protocols` for subprotocol negotiation.
+  Low-level options passed directly to the underlying `isomorphic-ws` constructor. Accepts `protocols` (subprotocol negotiation), `agent` (proxy support), and any other fields from `WebSocket.ClientOptions` or `ClientRequestArgs`.
 </ParamField>
 
 ---

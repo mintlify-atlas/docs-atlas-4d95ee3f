@@ -1,5 +1,5 @@
 ---
-title: "TypeScript Type Reference for bybit-api"
+title: "TypeScript Types and Interfaces — bybit-api SDK Reference"
 sidebarTitle: "Types"
 description: "Key TypeScript interfaces and types exported by bybit-api, including request params, response shapes, WebSocket event types, and client configuration."
 ---
@@ -464,6 +464,46 @@ const res = await client.getWalletBalance({ accountType: 'UNIFIED' });
 // res.result.list → WalletBalanceV5[]
 // res.time → Unix millisecond timestamp
 // res.retCode → 0 on success
+```
+
+---
+
+## Logger Type
+
+### `DefaultLogger`
+
+The SDK exports `DefaultLogger` — a plain object that serves both as the default console logger and as the interface (type) for any custom logger you provide to `WebsocketClient` or `WebsocketAPIClient`.
+
+```typescript
+export const DefaultLogger = {
+  /** Ping/pong and raw messages. Uncomment the body to enable noisy trace output. */
+  trace: (..._params: LogParams): void => {
+    // console.log(_params);
+  },
+  info: (...params: LogParams): void => {
+    console.info(params);
+  },
+  error: (...params: LogParams): void => {
+    console.error(params);
+  },
+};
+
+// The type mirrors the shape of DefaultLogger:
+export type DefaultLogger = typeof DefaultLogger;
+```
+
+To supply a custom logger, pass any object that satisfies `DefaultLogger`:
+
+```typescript
+import { WebsocketClient, DefaultLogger } from 'bybit-api';
+
+const myLogger: DefaultLogger = {
+  trace: () => {}, // suppress trace output
+  info: (...params) => myLoggingLibrary.info(params),
+  error: (...params) => myLoggingLibrary.error(params),
+};
+
+const ws = new WebsocketClient({ key: 'KEY', secret: 'SECRET' }, myLogger);
 ```
 
 ---

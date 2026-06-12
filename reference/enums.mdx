@@ -1,5 +1,5 @@
 ---
-title: "Enums and Constants Reference for bybit-api"
+title: "Enums and Constants Reference — bybit-api SDK Guide"
 sidebarTitle: "Enums"
 description: "All constants and enums exported by bybit-api — API error codes, position mode, TP/SL mode, WS key map, and WebSocket API operations."
 ---
@@ -47,7 +47,8 @@ try {
 | `PARAMS_MISSING_OR_WRONG` | 10001 | Bad request — missing or incorrectly typed parameter. Also used for some "already set" responses. |
 | `INVALID_API_KEY_OR_PERMISSIONS` | 10003 | Invalid API key or insufficient key permissions. |
 | `SIGNATURE_NOT_VALID` | 10004 | Request signature is invalid. |
-| `INCORRECT_API_KEY_PERMISSIONS` | 10005 | API key lacks the required permission for this action. Also aliased as `V5_API_KEY_PERMISSION_DENIED`. |
+| `INCORRECT_API_KEY_PERMISSIONS` | 10005 | API key lacks the required permission for this action. |
+| `V5_API_KEY_PERMISSION_DENIED` | 10005 | Alias for `INCORRECT_API_KEY_PERMISSIONS` — V5-specific naming. |
 | `INCORRECT_API_REQUEST_IP` | 10010 | Request IP is not on the API key's IP whitelist. |
 | `DB_ERROR_WRONG_CURSOR` | 10016 | Invalid or stale pagination cursor. |
 | `ACCOUNT_NOT_UNIFIED` | 10020 | Account is not a unified margin account. |
@@ -80,6 +81,10 @@ try {
 | `V5_CROSS_ISOLATED_MARGIN_NOT_CHANGED` | 110026 | Cross/isolated margin setting unchanged. |
 | `V5_LEVERAGE_NOT_CHANGED` | 110043 | Leverage already at requested value (V5). |
 | `V5_MARGIN_MODE_NOT_CHANGED` | 110073 | Margin mode already set to this value. |
+| `V5_TPSL_NOT_CHANGED` | 10001 | TP/SL mode or values not changed (V5 alias of `PARAMS_MISSING_OR_WRONG`). |
+| `V5_RISK_ID_NOT_CHANGED` | 10001 | Risk ID not changed (V5 alias of `PARAMS_MISSING_OR_WRONG`). |
+| `V5_AUTO_ADD_MARGIN_NOT_CHANGED` | 10001 | Auto-add margin setting not changed (V5 alias of `PARAMS_MISSING_OR_WRONG`). |
+| `V5_TPSL_ERROR_NO_POSITION` | 10001 | TP/SL error: no open position exists (V5 alias of `PARAMS_MISSING_OR_WRONG`). |
 | `V5_RISK_ID_NOT_MODIFIED` | 110075 | Risk ID not modified. |
 | `QTY_EXCEEDS_MAX_LIMIT` | 130006 | Order quantity exceeds maximum allowed. |
 | `ORDER_NOT_FOUND_OR_TOO_LATE_LINEAR` | 130010 | Order not found or too late (linear). |

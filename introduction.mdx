@@ -1,7 +1,7 @@
 ---
 title: "bybit-api: Complete Node.js SDK for Bybit Trading APIs"
 sidebarTitle: "Introduction"
-description: "bybit-api is a complete Node.js/TypeScript SDK for Bybit REST APIs, WebSocket streams, and WebSocket API — with automatic authentication and 400 req/s rate limits."
+description: "Node.js/TypeScript SDK for Bybit REST APIs, WebSockets, and the WebSocket API with auto-signing, 400 req/s rate limits, and full TypeScript support."
 ---
 
 `bybit-api` is a professional Node.js, JavaScript, and TypeScript SDK for Bybit's trading platform. It provides complete coverage of Bybit's V5 REST APIs, public and private WebSocket streams, and the WebSocket API — all through a single npm package with a modern, promise-driven interface.
@@ -17,13 +17,14 @@ The SDK wraps every surface of the Bybit API that a trading integration needs:
 
 ## Client classes
 
-The SDK ships three main client classes. For new integrations, start with `RestClientV5` for REST calls and `WebsocketClient` for streaming.
+The SDK ships four client classes. For new integrations, start with `RestClientV5` for REST calls and `WebsocketClient` for streaming.
 
 | Class | Description |
 |---|---|
 | `RestClientV5` | Unified V5 all-in-one REST client. Covers every V5 REST endpoint including market data, trading, account, asset, and specialty APIs. |
 | `WebsocketClient` | Manages all WebSocket connectivity — public market streams, private account streams, and raw WebSocket API commands via `sendWSAPIRequest(...)`. |
 | `WebsocketAPIClient` | Promise-driven wrapper over `WebsocketClient` for the WebSocket API. Call methods like `submitNewOrder(...)` and `await` responses, similar to a REST API. |
+| `SpotClientV3` | Legacy Spot V3 REST client. Retained for backward compatibility. New integrations should use `RestClientV5` instead. |
 
 ## Key benefits
 
@@ -37,6 +38,15 @@ The SDK ships three main client classes. For new integrations, start with `RestC
 - **Multi-environment support** — live, testnet, demo trading, and nine regional API domains (`EU`, `NL`, `TK`, `KZ`, `HK`, `GE`, `UAE`, `bytick`, `default`) are all configurable.
 - **Proxy support** — pass standard axios options for proxy and custom HTTP agent configuration.
 - **JavaScript compatible** — TypeScript is not required. The published npm package is a compiled JavaScript module with bundled type declarations.
+
+## Exported constants and utilities
+
+The package also exports several constants and utilities that are useful for advanced integrations:
+
+- **`WS_KEY_MAP`** — a constant map of every WebSocket connection key (`v5SpotPublic`, `v5LinearPublic`, `v5InversePublic`, `v5OptionPublic`, `v5Private`, `v5PrivateTrade`). Use these values to identify which connection an event came from when handling WebSocket events.
+- **`API_ERROR_CODE`** — a constant map of Bybit API error codes and their meanings. Useful for catching and branching on specific API-level errors in your error-handling logic.
+- **`DefaultLogger`** — the default logger object used internally by the SDK. Spread or extend it to add custom log handling (for example, enabling `trace`-level output) without replacing the full logger.
+- **`WS_AUTH_ON_CONNECT_KEYS`** — the list of WebSocket keys that require authentication on connect (private and trade channels).
 
 ## Installation
 

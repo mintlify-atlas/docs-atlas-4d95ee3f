@@ -16,6 +16,14 @@ npm install bybit-api
 import { RestClientV5 } from 'bybit-api';
 ```
 
+<Note>
+  **Looking for the legacy Spot V3 client?** The SDK also exports `SpotClientV3` for backwards compatibility with Bybit's older V3 Spot REST endpoints. Bybit has deprecated those endpoints in favour of the unified V5 API, so all new integrations should use `RestClientV5` with `category: 'spot'` instead.
+
+  ```typescript
+  import { SpotClientV3 } from 'bybit-api'; // legacy — prefer RestClientV5
+  ```
+</Note>
+
 ## Constructor
 
 ```typescript

@@ -1,7 +1,7 @@
 ---
-title: "WebSocket Integration Overview for bybit-api"
+title: "WebSocket Overview — bybit-api WebsocketClient Guide"
 sidebarTitle: "Overview"
-description: "bybit-api's WebsocketClient manages connections, authentication, heartbeats, and reconnects automatically. Subscribe to any public or private topic in one call."
+description: "WebsocketClient handles connections, auth, heartbeats, and reconnects for you. Subscribe to any Bybit public or private topic in a single call."
 ---
 
 The `WebsocketClient` in `bybit-api` is a full-featured WebSocket manager that handles every aspect of connectivity for you. Connections open on first subscribe, authentication happens automatically when credentials are provided, heartbeats (ping/pong) keep connections alive, and dropped connections are silently respawned with all topics resubscribed. You write event handlers — the SDK handles the rest.

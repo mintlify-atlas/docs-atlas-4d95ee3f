@@ -281,22 +281,18 @@ await client.setMMP({
 
 ### `resetMMP`
 
-Manually reset MMP after it has been triggered, restoring quoting activity.
+Manually reset MMP after it has been triggered, restoring quoting activity. Takes the base coin symbol as a plain string argument.
 
 ```typescript
-await client.resetMMP({
-  baseCoin: 'BTC',
-});
+await client.resetMMP('BTC');
 ```
 
 ### `getMMPState`
 
-Query the current MMP configuration and state for a base coin.
+Query the current MMP configuration and state for a base coin. Takes the base coin symbol as a plain string argument.
 
 ```typescript
-const mmpState = await client.getMMPState({
-  baseCoin: 'BTC',
-});
+const mmpState = await client.getMMPState('BTC');
 
 console.log(
   mmpState.result.state[0].mmpEnabled,

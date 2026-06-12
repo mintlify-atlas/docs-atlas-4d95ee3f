@@ -1,7 +1,7 @@
 ---
-title: "Configure Logging in bybit-api"
+title: "Configure Logging and Debugging in the bybit-api SDK"
 sidebarTitle: "Logging"
-description: "Customize bybit-api log output by providing a custom logger with trace, info, and error methods, or extend the DefaultLogger."
+description: "Set up custom logging in bybit-api by implementing trace, info, and error methods, using DefaultLogger, or routing output to pino or winston."
 ---
 
 The `bybit-api` SDK uses a simple, pluggable logger interface. By default, `info` and `error` messages are printed to the console via `console.info` and `console.error`. Trace-level messages — such as raw ping/pong frames and internal reconnect events — are silenced by default but can be enabled for debugging. You can replace the logger entirely, selectively override methods, or suppress all output.
@@ -12,9 +12,9 @@ The SDK exports a `DefaultLogger` object with three methods that match the full 
 
 ```typescript
 export const DefaultLogger = {
-  /** Ping/pong events and other raw messages that might be noisy. Disabled by default. */
+  /** Ping/pong events and other raw messages that might be noisy. Enable this while troubleshooting. */
   trace: (..._params: any): void => {
-    // no-op by default
+    // silent by default
   },
   info: (...params: any): void => {
     console.info(params);

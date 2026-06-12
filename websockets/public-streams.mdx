@@ -1,7 +1,7 @@
 ---
-title: "Public WebSocket Streams — Real-Time Market Data from Bybit"
+title: "Bybit Public WebSocket Streams — Real-Time Market Data"
 sidebarTitle: "Public Streams"
-description: "Subscribe to real-time orderbook, kline, trade, ticker, and liquidation streams from Bybit using WebsocketClient.subscribeV5()."
+description: "Subscribe to real-time orderbook, kline, trade, ticker, and liquidation streams from Bybit using WebsocketClient.subscribeV5(). No authentication required."
 ---
 
 Public WebSocket streams deliver real-time market data — orderbooks, klines, trades, tickers, liquidations — without any authentication. The `WebsocketClient` routes each subscription to the correct category-specific endpoint automatically. You provide the topic string and the `category`; the SDK handles connections, heartbeats, and reconnects.
