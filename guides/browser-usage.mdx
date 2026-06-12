@@ -1,0 +1,161 @@
+---
+title: "Use bybit-api in Browser and Frontend Projects"
+sidebarTitle: "Browser Usage"
+description: "Bundle bybit-api for browser use via webpack or import it directly into TypeScript/React projects with stream-browserify polyfill."
+---
+
+The `bybit-api` SDK is primarily designed for Node.js, but it can be used in browser-based projects through two approaches. The **direct import** method is the modern approach, suitable for TypeScript and React projects that use a bundler such as Vite or webpack 5. The **webpack bundle** method produces a pre-built UMD file you can include with a `<script>` tag on any webpage.
+
+<Warning>
+  Never embed live API keys or secrets in client-side browser code. Any user who inspects your JavaScript bundle or network traffic can read them. Use a server-side proxy for all private authenticated endpoints, and only use the browser client for public market data.
+</Warning>
+
+---
+
+## Approach 1: Direct Import (Modern)
+
+This approach lets you import `bybit-api` directly into a TypeScript or JavaScript frontend project. A Node.js `stream` polyfill is required because the SDK has a transitive dependency on the Node.js `stream` module, which is not available natively in browsers.
+
+<Steps>
+
+### Install the stream polyfill
+
+```bash
+npm install stream-browserify
+```
+
+### Configure tsconfig.json path mapping
+
+Add a `paths` entry to your `tsconfig.json` so the TypeScript compiler and your bundler resolve `stream` to the browser-compatible polyfill:
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "stream": [
+        "./node_modules/stream-browserify"
+      ]
+    }
+  }
+}
+```
+
+### Add the global polyfill
+
+Browsers do not define a `global` variable the way Node.js does. Declare it in your application's entry point or polyfills file (for example `polyfills.ts` in Angular, or the top of `main.ts`/`index.ts` in other frameworks):
+
+```typescript
+(window as any).global = window;
+```
+
+### Import and use the client
+
+With the polyfill in place, import `bybit-api` exactly as you would in Node.js:
+
+```typescript
+import { RestClientV5, WebsocketClient } from 'bybit-api';
+
+// Public REST call — no credentials needed
+const client = new RestClientV5();
+
+const orderbook = await client.getOrderbook({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+});
+
+console.log('Orderbook:', orderbook.result);
+```
+
+</Steps>
+
+<Note>
+  The `https.Agent`-based keep-alive feature (`keepAlive: true`) is Node.js-only and is automatically excluded from browser builds via the webpack fallback configuration in the SDK. Browser connection pooling is handled natively by the browser.
+</Note>
+
+---
+
+## Approach 2: Webpack Bundle (Legacy)
+
+This is the traditional way to use `bybit-api` on a webpage without a module bundler in the frontend project. The SDK repository includes a webpack configuration that produces a minified UMD bundle.
+
+<Steps>
+
+### Clone the repository and install dependencies
+
+```bash
+git clone https://github.com/tiagosiebler/bybit-api.git
+cd bybit-api
+npm install
+```
+
+### Build the TypeScript source
+
+```bash
+npm run build
+```
+
+### Bundle with webpack
+
+```bash
+npm run pack
+```
+
+The output file `bybitapi.js` (and its source map) will be written to the `dist/` directory at the root of the repository.
+
+### Include the bundle in your HTML
+
+```html
+<script src="dist/bybitapi.js"></script>
+<script>
+  // The UMD bundle exposes the library under the global 'bybitapi' name
+  const client = new bybitapi.RestClientV5();
+
+  client.getOrderbook({ category: 'linear', symbol: 'BTCUSDT' })
+    .then(result => console.log('Orderbook:', result))
+    .catch(err => console.error('Error:', err));
+</script>
+```
+
+</Steps>
+
+The webpack configuration targets UMD (`libraryTarget: 'umd'`), which means the bundle works as a `<script>` tag include, a CommonJS `require()`, or an AMD `define()` module.
+
+### What the webpack config excludes
+
+The SDK's webpack configuration explicitly disables the Node.js `http` and `https` modules via the `resolve.fallback` option:
+
+```javascript
+fallback: {
+  "http": false,
+  "https": false,
+}
+```
+
+This means the `keepAlive` option (which uses `https.Agent`) is not available in the webpack bundle. All other REST and WebSocket features work as normal.
+
+---
+
+## Security Considerations
+
+<CardGroup cols={1}>
+  <Card title="Use a proxy server for private endpoints">
+    Route any request that requires API credentials through a backend server you control. Your server holds the API key and secret, signs the request, and forwards it to Bybit. The browser only ever communicates with your own server.
+  </Card>
+  <Card title="Public endpoints are safe to call directly">
+    Endpoints that do not require authentication — such as market data, orderbooks, and klines — can be called directly from the browser without exposing credentials.
+  </Card>
+  <Card title="Restrict API key permissions and IPs">
+    If you must use credentials in a browser context during development or testing, create a dedicated API key with minimal permissions and IP restrictions. Revoke it as soon as it is no longer needed.
+  </Card>
+</CardGroup>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Configuration" href="/guides/configuration">
+    Full reference for RestClientV5 and WebsocketClient options
+  </Card>
+  <Card title="Environments" href="/guides/environments">
+    Use testnet or demo trading for development
+  </Card>
+</CardGroup>

@@ -1,0 +1,260 @@
+---
+title: "RestClientV5: Unified Bybit V5 REST API Client"
+sidebarTitle: "Overview"
+description: "RestClientV5 is the single unified client for all Bybit V5 REST endpoints — market data, trading, positions, account, and asset management."
+---
+
+`RestClientV5` is the primary class in the `bybit-api` Node.js SDK. It consolidates every Bybit V5 REST API endpoint — spanning public market data, authenticated order management, position control, account configuration, and asset transfers — into a single TypeScript class with full type safety and automatic request signing.
+
+## What RestClientV5 Covers
+
+Every V5 REST group is available through one unified client instance:
+
+| Group | Description | Auth Required |
+|---|---|---|
+| **Market Data** | Klines, orderbooks, tickers, funding rates, open interest | No |
+| **Trading** | Submit, amend, cancel, and batch orders | Yes |
+| **Positions** | Leverage, margin mode, TP/SL, PnL | Yes |
+| **Account** | Balances, fee rates, transaction logs, MMP | Yes |
+| **Asset** | Transfers, deposits, withdrawals, coin info | Yes |
+
+## Constructor Options
+
+<ParamField path="key" type="string">
+  Your Bybit API key. Required for all authenticated endpoints.
+</ParamField>
+
+<ParamField path="secret" type="string">
+  Your Bybit API secret. Required for all authenticated endpoints.
+</ParamField>
+
+<ParamField path="testnet" type="boolean" default="false">
+  Connect to the Bybit testnet (`https://api-testnet.bybit.com`) instead of the live environment.
+</ParamField>
+
+<ParamField path="demoTrading" type="boolean" default="false">
+  Use [Bybit demo trading](https://bybit-exchange.github.io/docs/v5/demo) — a paper trading environment with real market data but no real funds.
+</ParamField>
+
+<ParamField path="apiRegion" type="APIRegion">
+  Override the API region. Accepted values: `'default'`, `'bytick'`, `'NL'`, `'TK'`, `'KZ'`, `'HK'`, `'GE'`, `'UAE'`, `'EU'`. Omit to use the default global endpoint.
+</ParamField>
+
+<ParamField path="recv_window" type="number">
+  Override the maximum request window size in milliseconds. Defaults to Bybit's standard `5000` ms. Increase if you experience clock-drift errors.
+</ParamField>
+
+<ParamField path="parseAPIRateLimits" type="boolean" default="false">
+  When `true`, per-endpoint rate limit headers are parsed and included in every response object.
+</ParamField>
+
+<ParamField path="throwExceptions" type="boolean" default="false">
+  When `true`, the SDK automatically throws an `Error` for any response where `retCode !== 0`, so you can use `try/catch` without manually checking the code.
+</ParamField>
+
+## Instantiation
+
+<CodeGroup>
+
+```typescript TypeScript (authenticated)
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+```typescript TypeScript (public only)
+import { RestClientV5 } from 'bybit-api';
+
+// No key/secret needed for public market data endpoints
+const client = new RestClientV5();
+```
+
+```typescript TypeScript (testnet)
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.TESTNET_API_KEY,
+  secret: process.env.TESTNET_API_SECRET,
+  testnet: true,
+});
+```
+
+```typescript TypeScript (demo trading)
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.DEMO_API_KEY,
+  secret: process.env.DEMO_API_SECRET,
+  demoTrading: true,
+});
+```
+
+```javascript JavaScript (CommonJS)
+const { RestClientV5 } = require('bybit-api');
+
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+</CodeGroup>
+
+## Response Structure
+
+Every method in `RestClientV5` returns a `Promise<APIResponseV3WithTime<T>>`. The shape of every response is consistent across all endpoints:
+
+```typescript
+interface APIResponseV3WithTime<T> {
+  retCode: number;   // 0 = success; non-zero = error
+  retMsg: string;    // 'OK' on success, or a descriptive error message
+  result: T;         // The endpoint-specific payload
+  retExtInfo: {};    // Extended info (batch order results, etc.)
+  time: number;      // Server timestamp in milliseconds
+}
+```
+
+A successful ticker response looks like:
+
+```typescript
+{
+  retCode: 0,
+  retMsg: 'OK',
+  result: {
+    category: 'linear',
+    list: [ { symbol: 'BTCUSDT', lastPrice: '67430.00', ... } ]
+  },
+  retExtInfo: {},
+  time: 1712345678901
+}
+```
+
+## Error Handling
+
+<Note>
+  By default the SDK does **not** throw on API errors — it always resolves the `Promise`. Check `retCode` to determine success or failure.
+</Note>
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({ key: '...', secret: '...' });
+
+async function placeOrder() {
+  const response = await client.submitOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    side: 'Buy',
+    orderType: 'Market',
+    qty: '0.01',
+  });
+
+  if (response.retCode !== 0) {
+    // Handle API-level error
+    console.error(`Order failed [${response.retCode}]: ${response.retMsg}`);
+    return;
+  }
+
+  console.log('Order placed:', response.result.orderId);
+}
+```
+
+<Tip>
+  Set `throwExceptions: true` in the constructor to have the SDK throw automatically on non-zero `retCode` values. This allows you to use `try/catch` without manually inspecting `retCode` every time.
+</Tip>
+
+### Automatic exception throwing
+
+```typescript
+const client = new RestClientV5({
+  key: '...',
+  secret: '...',
+  throwExceptions: true,
+});
+
+try {
+  const response = await client.submitOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    side: 'Buy',
+    orderType: 'Market',
+    qty: '0.01',
+  });
+  console.log('Order ID:', response.result.orderId);
+} catch (err) {
+  // Thrown for both network errors AND non-zero retCode
+  console.error('Order error:', err.message);
+}
+```
+
+## Pagination with `nextPageCursor`
+
+Endpoints that return lists support cursor-based pagination. The cursor for the next page is returned as `result.nextPageCursor`.
+
+```typescript
+async function getAllOrders(client: RestClientV5) {
+  const allOrders = [];
+  let cursor: string | undefined;
+
+  do {
+    const response = await client.getHistoricOrders({
+      category: 'linear',
+      limit: 50,
+      cursor,
+    });
+
+    if (response.retCode !== 0) break;
+
+    allOrders.push(...response.result.list);
+    cursor = response.result.nextPageCursor || undefined;
+  } while (cursor);
+
+  return allOrders;
+}
+```
+
+## Rate Limits
+
+The Bybit V5 API allows up to **400 requests per second** on most endpoints. The SDK does not automatically throttle your requests — you are responsible for staying within limits.
+
+<Warning>
+  Exceeding rate limits returns `retCode: 10006` (`"Too many requests"`). Consider implementing a queue or delay between bulk operations.
+</Warning>
+
+```typescript
+// Check rate limit headers in each response (enable parseAPIRateLimits)
+const client = new RestClientV5({
+  key: '...',
+  secret: '...',
+  parseAPIRateLimits: true,
+});
+
+const response = await client.submitOrder({ ... });
+// response.rateLimit contains { limit, remaining, resetTimestamp }
+```
+
+## Explore by Category
+
+<CardGroup cols={2}>
+  <Card title="Market Data" icon="chart-line" href="/rest/market-data">
+    Fetch klines, orderbooks, tickers, funding rates, open interest, and more — all public, no API key required.
+  </Card>
+  <Card title="Trading" icon="arrows-up-down" href="/rest/trading">
+    Submit, amend, cancel, and batch orders across spot, linear, inverse, and option categories.
+  </Card>
+  <Card title="Positions" icon="layer-group" href="/rest/positions">
+    Manage leverage, margin mode, TP/SL, risk limits, and closed PnL for your open positions.
+  </Card>
+  <Card title="Account" icon="wallet" href="/rest/account">
+    Query balances, fee rates, transaction logs, collateral settings, and MMP state.
+  </Card>
+  <Card title="Asset" icon="vault" href="/rest/asset">
+    Create transfers, manage deposits and withdrawals, and query coin information across accounts.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how to generate API keys and configure credentials for authenticated requests.
+  </Card>
+</CardGroup>

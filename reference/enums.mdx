@@ -1,0 +1,323 @@
+---
+title: "Enums and Constants Reference for bybit-api"
+sidebarTitle: "Enums"
+description: "All constants and enums exported by bybit-api — API error codes, position mode, TP/SL mode, WS key map, and WebSocket API operations."
+---
+
+The bybit-api SDK exports a set of constant objects, enums, and arrays that map human-readable identifiers to the values expected by the Bybit API. Using these avoids hard-coding magic strings or numbers throughout your codebase.
+
+## Import
+
+```typescript
+import {
+  API_ERROR_CODE,
+  WS_KEY_MAP,
+  linearPositionModeEnum,
+  positionTpSlModeEnum,
+  LinearPositionIdx,
+  WS_API_Operations,
+} from 'bybit-api';
+```
+
+---
+
+## `API_ERROR_CODE`
+
+A constant object mapping named error codes to their numeric Bybit equivalents. Use these in `catch` blocks to handle specific error conditions.
+
+```typescript
+import { API_ERROR_CODE } from 'bybit-api';
+
+try {
+  await client.setLeverage({ category: 'linear', symbol: 'BTCUSDT', buyLeverage: '10', sellLeverage: '10' });
+} catch (err) {
+  if (err.retCode === API_ERROR_CODE.V5_LEVERAGE_NOT_CHANGED) {
+    console.log('Leverage was already set to that value.');
+  }
+}
+```
+
+### Error Code Table
+
+| Constant Name | Code | When It Occurs |
+|---------------|-----:|----------------|
+| `BALANCE_INSUFFICIENT_SPOT` | -1131 | Insufficient balance on spot (legacy). |
+| `ORDER_NOT_FOUND_OR_TOO_LATE_SPOT` | -2013 | Order not found or too late to act (spot legacy). |
+| `SUCCESS` | 0 | Request succeeded. |
+| `PARAMS_MISSING_OR_WRONG` | 10001 | Bad request — missing or incorrectly typed parameter. Also used for some "already set" responses. |
+| `INVALID_API_KEY_OR_PERMISSIONS` | 10003 | Invalid API key or insufficient key permissions. |
+| `SIGNATURE_NOT_VALID` | 10004 | Request signature is invalid. |
+| `INCORRECT_API_KEY_PERMISSIONS` | 10005 | API key lacks the required permission for this action. Also aliased as `V5_API_KEY_PERMISSION_DENIED`. |
+| `INCORRECT_API_REQUEST_IP` | 10010 | Request IP is not on the API key's IP whitelist. |
+| `DB_ERROR_WRONG_CURSOR` | 10016 | Invalid or stale pagination cursor. |
+| `ACCOUNT_NOT_UNIFIED` | 10020 | Account is not a unified margin account. |
+| `COMPLIANCE_RULES_TRIGGERED` | 10024 | Compliance or KYC rules triggered. |
+| `UNKNOWN_ERROR` | 12000 | Generic unknown error. |
+| `BALANCE_INSUFFICIENT_SPOT_V3` | 12131 | Insufficient balance (spot V3). |
+| `ORDER_NOT_FOUND_SPOT_V3` | 12213 | Order not found (spot V3). |
+| `ORDER_NOT_FOUND_LEVERAGED_TOKEN` | 12407 | Leveraged token order not found. |
+| `EXCEEDED_UPPER_LIMIT_LEVERAGED_TOKEN` | 12409 | Leveraged token order exceeds upper limit. |
+| `QUERY_ACCOUNT_INFO_ERROR` | 12602 | Error querying account info. |
+| `CROSS_MARGIN_USER_NOT_FOUND` | 12607 | Cross margin user not found. |
+| `CROSS_MARGIN_REPAYMENT_NOT_REQUIRED` | 12616 | Repayment is not required. |
+| `CROSS_MARGIN_NOT_ENABLED` | 12640 | Cross margin is not enabled. |
+| `ORDER_NOT_FOUND_OR_TOO_LATE` | 20001 | Order not found or too late to cancel/amend. |
+| `POSITION_STATUS_NOT_NORMAL` | 30013 | Position is not in normal status. |
+| `CANNOT_SET_TRADING_STOP_FOR_ZERO_POS` | 30024 | Cannot set TP/SL when position size is zero. |
+| `INSUFFICIENT_BALANCE_FOR_ORDER_COST` | 30031 | Insufficient balance for order cost. |
+| `POSITION_IDX_NOT_MATCH_POSITION_MODE` | 30041 | Position index does not match the current position mode. |
+| `INSUFFICIENT_BALANCE` | 30042 | Insufficient balance (e.g. conditional order too large). |
+| `POSITION_IS_CROSS_MARGIN` | 30056 | Cannot change margin on a cross-margin position. |
+| `POSITION_MODE_NOT_MODIFIED` | 30083 | Position mode is already set to the requested value. |
+| `ISOLATED_NOT_MODIFIED` | 30084 | Isolated margin setting unchanged. |
+| `RISK_LIMIT_NOT_EXISTS` | 30090 | Risk limit tier does not exist. |
+| `SUB_USER_ALREADY_EXISTS` | 31005 | Sub-user already exists. |
+| `LEVERAGE_NOT_MODIFIED` | 34036 | Leverage already set to requested value. |
+| `SAME_SLTP_MODE` | 37002 | TP/SL mode already set to this value. |
+| `COPY_TRADE_NOT_OPEN_ORDER` | 39426 | Copy trade order is not open. |
+| `V5_ORDER_NOT_FOUND` | 110001 | Order not found (V5). |
+| `V5_INSUFFICIENT_BALANCE` | 110007 | Insufficient balance (V5). |
+| `V5_CROSS_ISOLATED_MARGIN_NOT_CHANGED` | 110026 | Cross/isolated margin setting unchanged. |
+| `V5_LEVERAGE_NOT_CHANGED` | 110043 | Leverage already at requested value (V5). |
+| `V5_MARGIN_MODE_NOT_CHANGED` | 110073 | Margin mode already set to this value. |
+| `V5_RISK_ID_NOT_MODIFIED` | 110075 | Risk ID not modified. |
+| `QTY_EXCEEDS_MAX_LIMIT` | 130006 | Order quantity exceeds maximum allowed. |
+| `ORDER_NOT_FOUND_OR_TOO_LATE_LINEAR` | 130010 | Order not found or too late (linear). |
+| `ORDER_COST_NOT_AVAILABLE` | 130021 | Order cost is not available. |
+| `CANNOT_SET_LINEAR_TRADING_STOP_FOR_ZERO_POS` | 130024 | Cannot set trading stop when linear position is zero. |
+| `ISOLATED_NOT_MODIFIED_LINEAR` | 130056 | Isolated margin setting unchanged (linear). |
+| `POSITION_SIZE_IS_ZERO` | 130057 | Position size is zero. |
+| `AUTO_ADD_MARGIN_NOT_MODIFIED` | 130060 | Auto-add margin setting unchanged. |
+| `INSUFFICIENT_BALANCE_FOR_ORDER_COST_LINEAR` | 130080 | Insufficient balance for order cost (linear). |
+| `SAME_SLTP_MODE_LINEAR` | 130150 | TP/SL mode already set (linear). |
+| `NOT_SUPPORTED_FOR_SUBACCOUNTS` | 131003 | This operation is not supported for sub-accounts. |
+| `TRANSFER_ID_EXISTS` | 131214 | Transfer ID already exists. |
+| `RISK_ID_NOT_MODIFIED` | 134026 | Risk ID not modified. |
+| `CONTRACT_ORDER_NOT_EXISTS` | 140001 | Contract order does not exist. |
+| `CONTRACT_INSUFFICIENT_BALANCE` | 140007 | Insufficient balance for contract. |
+| `CONTRACT_POSITION_MODE_NOT_MODIFIED` | 140025 | Contract position mode unchanged. |
+| `CONTRACT_MARGIN_MODE_NOT_MODIFIED` | 140026 | Contract margin mode unchanged. |
+| `CONTRACT_RISK_LIMIT_INFO_NOT_EXISTS` | 140031 | Contract risk limit info not found. |
+| `CONTRACT_SET_LEVERAGE_NOT_MODIFIED` | 140043 | Contract leverage unchanged. |
+| `SUB_USER_NOT_FOUND` | 141009 | Sub-user not found. |
+| `SPOT_LEVERAGE_TOKEN_INSUFFICIENT_BALANCE` | 175006 | Insufficient balance for leveraged token. |
+| `SPOT_LEVERAGE_TOKEN_ORDER_NOT_FOUND` | 175007 | Leveraged token order not found. |
+| `SPOT_LEVERAGE_QUIZ_REQUIRED` | 175010 | Must complete leveraged token quiz first. |
+| `SPOT_MARGIN_NOT_ENABLED` | 176008 | Spot margin is not enabled. |
+| `SPOT_MARGIN_QUESTIONNAIRE_NOT_SUBMIT` | 176037 | Must submit spot margin questionnaire. |
+| `CONTRACT_NAME_NOT_EXIST` | 3100111 | Contract name does not exist (e.g. inactive options symbol). |
+| `ORDER_NOT_EXIST` | 3100136 | Order does not exist. |
+| `NO_ACTIVE_ORDER` | 3100205 | No active order found. |
+| `ACCOUNT_NOT_EXIST` | 3200200 | Account not opened for this product (e.g. USDC options). |
+| `INCORRECT_PRIVATE_OPERATIONS` | 3303001 | Incorrect private operation. |
+| `SET_MARGIN_MODE_FAILED_USDC` | 3400045 | Failed to set margin mode for USDC. |
+| `INCORRECT_MMP_PARAMETERS` | 3500712 | Incorrect market maker protection parameters. |
+| `INSTITION_MMP_PROFILE_NOT_FOUND` | 3500713 | Institutional MMP profile not found. |
+
+---
+
+## `WS_KEY_MAP`
+
+Maps connection names to the string keys used by `WebsocketClient` to identify each WebSocket connection. Import and use these when calling `sendWSAPIRequest()` or when handling `wsKey` values in event listeners.
+
+```typescript
+import { WS_KEY_MAP } from 'bybit-api';
+
+console.log(WS_KEY_MAP.v5PrivateTrade); // 'v5PrivateTrade'
+```
+
+```typescript
+export const WS_KEY_MAP = {
+  v5SpotPublic: 'v5SpotPublic',
+  v5LinearPublic: 'v5LinearPublic',
+  v5InversePublic: 'v5InversePublic',
+  v5OptionPublic: 'v5OptionPublic',
+  v5Private: 'v5Private',
+  /**
+   * The V5 WebSocket API connection — used for order.create / amend / cancel
+   */
+  v5PrivateTrade: 'v5PrivateTrade',
+} as const;
+```
+
+| Key | Value | Purpose |
+|-----|-------|---------|
+| `v5SpotPublic` | `'v5SpotPublic'` | Spot market data (order book, tickers, trades). |
+| `v5LinearPublic` | `'v5LinearPublic'` | Linear perp/futures market data. |
+| `v5InversePublic` | `'v5InversePublic'` | Inverse perp/futures market data. |
+| `v5OptionPublic` | `'v5OptionPublic'` | Options market data. |
+| `v5Private` | `'v5Private'` | Private stream: orders, positions, wallet, executions. |
+| `v5PrivateTrade` | `'v5PrivateTrade'` | WS API connection for order management. |
+
+---
+
+## `linearPositionModeEnum`
+
+Maps position mode names to the string values accepted by Bybit's position mode API.
+
+```typescript
+export const linearPositionModeEnum = {
+  OneWayMode: 'MergedSingle',
+  HedgeMode: 'BothSide',
+} as const;
+```
+
+```typescript
+import { linearPositionModeEnum } from 'bybit-api';
+
+await client.switchPositionMode({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  mode: linearPositionModeEnum.HedgeMode, // 'BothSide'
+});
+```
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `OneWayMode` | `'MergedSingle'` | One-way position mode (net position). |
+| `HedgeMode` | `'BothSide'` | Hedge mode — separate long and short positions. |
+
+---
+
+## `positionTpSlModeEnum`
+
+Maps TP/SL mode names to the string values used by Bybit.
+
+```typescript
+export const positionTpSlModeEnum = {
+  /**
+   * Full take profit/stop loss mode.
+   * A single TP order and a single SL order can be placed,
+   * covering the entire position.
+   */
+  Full: 'Full',
+  /**
+   * Partial take profit/stop loss mode.
+   * Multiple TP and SL orders can be placed,
+   * covering portions of the position.
+   */
+  Partial: 'Partial',
+} as const;
+```
+
+```typescript
+import { positionTpSlModeEnum } from 'bybit-api';
+
+await client.setTPSLMode({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  tpSlMode: positionTpSlModeEnum.Partial, // 'Partial'
+});
+```
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `Full` | `'Full'` | One TP + one SL covering the full position. |
+| `Partial` | `'Partial'` | Multiple TP/SL orders covering partial position sizes. |
+
+---
+
+## `LinearPositionIdx` (TypeScript enum)
+
+Numeric position index used when placing orders in hedge mode to specify which side the order is for.
+
+```typescript
+export enum LinearPositionIdx {
+  OneWayMode = 0,
+  BuySide = 1,
+  SellSide = 2,
+}
+```
+
+```typescript
+import { LinearPositionIdx } from 'bybit-api';
+
+// Place a limit buy in hedge mode on the buy-side position
+await client.submitOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  side: 'Buy',
+  orderType: 'Limit',
+  qty: '0.01',
+  price: '30000',
+  timeInForce: 'GTC',
+  positionIdx: LinearPositionIdx.BuySide, // 1
+});
+```
+
+| Member | Value | Description |
+|--------|------:|-------------|
+| `OneWayMode` | 0 | One-way position mode. |
+| `BuySide` | 1 | Long side position in hedge mode. |
+| `SellSide` | 2 | Short side position in hedge mode. |
+
+---
+
+## `WS_API_Operations`
+
+A runtime array of all supported WebSocket API operation strings. Useful for validating operations or building dynamic dispatch tables.
+
+```typescript
+export const WS_API_Operations: WSAPIOperation[] = [
+  'order.create',
+  'order.amend',
+  'order.cancel',
+  'order.create-batch',
+  'order.amend-batch',
+  'order.cancel-batch',
+];
+```
+
+```typescript
+import { WS_API_Operations } from 'bybit-api';
+
+// Check if an operation is valid before sending
+function isValidWSAPIOperation(op: string): op is WSAPIOperation {
+  return (WS_API_Operations as string[]).includes(op);
+}
+```
+
+| Operation | Description |
+|-----------|-------------|
+| `'order.create'` | Submit a new order. |
+| `'order.amend'` | Amend an existing open order. |
+| `'order.cancel'` | Cancel an existing open order. |
+| `'order.create-batch'` | Batch submit multiple orders. |
+| `'order.amend-batch'` | Batch amend multiple orders. |
+| `'order.cancel-batch'` | Batch cancel multiple orders. |
+
+---
+
+## `CategoryV5` (type, for reference)
+
+```typescript
+type CategoryV5 = 'spot' | 'linear' | 'inverse' | 'option';
+```
+
+While `CategoryV5` is a type rather than a runtime constant, it appears in virtually every API call. You can build your own constant map for it:
+
+```typescript
+const CATEGORY = {
+  spot: 'spot',
+  linear: 'linear',
+  inverse: 'inverse',
+  option: 'option',
+} as const satisfies Record<string, CategoryV5>;
+```
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Types Reference" href="/reference/types">
+    Full TypeScript type definitions for all SDK interfaces.
+  </Card>
+  <Card title="WebsocketClient" href="/reference/websocket-client">
+    Using WS_KEY_MAP in subscriptions and event handling.
+  </Card>
+  <Card title="WebsocketAPIClient" href="/reference/websocket-api-client">
+    Using WSAPIOperation and WS_API_Operations in order management.
+  </Card>
+  <Card title="RestClientV5" href="/reference/rest-client-v5">
+    Using API_ERROR_CODE in REST error handling.
+  </Card>
+</CardGroup>

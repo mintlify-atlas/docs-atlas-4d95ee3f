@@ -1,0 +1,550 @@
+---
+title: "RestClientV5 — Complete Bybit V5 REST API Method Reference"
+sidebarTitle: "RestClientV5"
+description: "Full method reference for RestClientV5, the unified Bybit V5 REST client covering market data, trading, positions, account, asset, and more."
+---
+
+`RestClientV5` is the single unified REST client for every Bybit V5 endpoint. It covers public market data, authenticated trading, position management, account configuration, asset transfers, user administration, and specialised categories such as Earn, Broker, Institutional Lending, and P2P. All methods return typed `Promise` values, and authentication is handled automatically whenever you supply `key` and `secret` during construction.
+
+## Installation & Import
+
+```bash
+npm install bybit-api
+```
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+```
+
+## Constructor
+
+```typescript
+const client = new RestClientV5(options?: RestClientOptions);
+```
+
+<ParamField body="options" type="RestClientOptions" optional>
+  Configuration object for the REST client. All fields are optional.
+
+  <Expandable title="RestClientOptions fields">
+    <ParamField body="key" type="string" optional>Your API key.</ParamField>
+    <ParamField body="secret" type="string" optional>Your API secret.</ParamField>
+    <ParamField body="testnet" type="boolean" optional>Connect to Bybit testnet. Default `false`.</ParamField>
+    <ParamField body="demoTrading" type="boolean" optional>Use Bybit V5 demo trading environment. Default `false`.</ParamField>
+    <ParamField body="apiRegion" type="APIRegion" optional>Override the API region (`'default' | 'bytick' | 'NL' | 'TK' | 'KZ' | 'HK' | 'GE' | 'UAE' | 'EU'`).</ParamField>
+    <ParamField body="recv_window" type="number" optional>Override the maximum request window in milliseconds.</ParamField>
+    <ParamField body="baseUrl" type="string" optional>Override the API base URL, e.g. `'https://api.bytick.com'`.</ParamField>
+    <ParamField body="enable_time_sync" type="boolean" optional>Automatically sync clock drift with Bybit servers. Default `false`.</ParamField>
+    <ParamField body="parseAPIRateLimits" type="boolean" optional>Parse per-endpoint rate limit headers from responses. Default `false`.</ParamField>
+    <ParamField body="throwExceptions" type="boolean" optional>Throw on failed REST API responses instead of returning them. Default `false`.</ParamField>
+    <ParamField body="customSignMessageFn" type="(message: string, secret: string) => Promise<string>" optional>Provide a custom HMAC signing function (e.g. Node's `crypto.createHmac`).</ParamField>
+  </Expandable>
+</ParamField>
+
+### Instantiation examples
+
+<CodeGroup>
+```typescript Public-only (no auth)
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5();
+```
+
+```typescript Authenticated – mainnet
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+});
+```
+
+```typescript Authenticated – testnet
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+  testnet: true,
+});
+```
+
+```typescript Demo trading
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+  demoTrading: true,
+});
+```
+</CodeGroup>
+
+<Note>
+  The `key` and `secret` fields are only required when calling authenticated (🔒) endpoints. Public endpoints work without them.
+</Note>
+
+---
+
+## Utility Methods
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getServerTime()` | — | GET | `/v5/market/time` | Returns current server timestamp. |
+| `getSystemStatus()` | 🔒 | GET | `/v5/system/status` | Check Bybit system status. |
+| `fetchServerTime()` | — | — | — | Convenience helper – resolves to the server time as a Unix second number. |
+| `fetchLatencySummary()` | — | — | — | Measures round-trip latency and estimates clock offset. |
+| `requestDemoTradingFunds()` | 🔒 | POST | `/v5/account/demo-apply-money` | Request demo trading funds. |
+| `createDemoAccount()` | 🔒 | POST | `/v5/user/create-demo-member` | Create a new demo sub-account. |
+
+---
+
+## Market Data
+
+All market-data methods are public and do not require API credentials.
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getKline(params)` | — | GET | `/v5/market/kline` | OHLCV kline/candlestick data. |
+| `getMarkPriceKline(params)` | — | GET | `/v5/market/mark-price-kline` | Mark price kline data. |
+| `getIndexPriceKline(params)` | — | GET | `/v5/market/index-price-kline` | Index price kline data. |
+| `getPremiumIndexPriceKline(params)` | — | GET | `/v5/market/premium-index-price-kline` | Premium index kline data. |
+| `getInstrumentsInfo(params)` | — | GET | `/v5/market/instruments-info` | Instrument specifications for a category. |
+| `getOrderbook(params)` | — | GET | `/v5/market/orderbook` | Order book snapshot. |
+| `getRPIOrderbook(params)` | — | GET | `/v5/market/rpi_orderbook` | RPI order book. |
+| `getTickers(params)` | — | GET | `/v5/market/tickers` | Real-time ticker for instruments. |
+| `getFundingRateHistory(params)` | — | GET | `/v5/market/funding/history` | Historical funding rates. |
+| `getPublicTradingHistory(params)` | — | GET | `/v5/market/recent-trade` | Recent public trades. |
+| `getOpenInterest(params)` | — | GET | `/v5/market/open-interest` | Open interest data. |
+| `getHistoricalVolatility(params)` | — | GET | `/v5/market/historical-volatility` | Historical volatility (options). |
+| `getInsurance(params)` | — | GET | `/v5/market/insurance` | Insurance fund information. |
+| `getRiskLimit(params)` | — | GET | `/v5/market/risk-limit` | Risk limit tiers. |
+| `getOptionDeliveryPrice(params)` | — | GET | `/v5/market/delivery-price` | Option delivery prices. |
+| `getDeliveryPrice(params)` | — | GET | `/v5/market/delivery-price` | Delivery price (alias). |
+| `getNewDeliveryPrice(params)` | — | GET | `/v5/market/new-delivery-price` | New delivery price endpoint. |
+| `getLongShortRatio(params)` | — | GET | `/v5/market/account-ratio` | Long/short ratio. |
+| `getIndexPriceComponents(params)` | — | GET | `/v5/market/index-price-components` | Components of an index price. |
+| `getOrderPriceLimit(params)` | — | GET | `/v5/market/price-limit` | Order price limits for an instrument. |
+| `getADLAlert(params)` | — | GET | `/v5/market/adlAlert` | Auto-deleveraging alert data. |
+| `getFeeGroupStructure(params)` | — | GET | `/v5/market/fee-group-info` | Fee group structure data. |
+
+### Example — fetch kline data
+
+```typescript
+const klines = await client.getKline({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  interval: '60',
+  limit: 200,
+});
+console.log(klines.result.list);
+```
+
+---
+
+## Spread Trading
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getSpreadInstrumentsInfo(params)` | — | GET | `/v5/spread/instrument` | Spread instrument specs. |
+| `getSpreadOrderbook(params)` | — | GET | `/v5/spread/orderbook` | Spread order book. |
+| `getSpreadTickers(params)` | — | GET | `/v5/spread/tickers` | Spread tickers. |
+| `getSpreadRecentTrades(params)` | — | GET | `/v5/spread/recent-trade` | Recent spread trades. |
+| `getSpreadMaxQty(params)` | 🔒 | GET | `/v5/spread/max-qty` | Max order size for spread. |
+| `submitSpreadOrder(params)` | 🔒 | POST | `/v5/spread/order/create` | Place a spread order. |
+| `amendSpreadOrder(params)` | 🔒 | POST | `/v5/spread/order/amend` | Amend a spread order. |
+| `cancelSpreadOrder(params)` | 🔒 | POST | `/v5/spread/order/cancel` | Cancel a spread order. |
+| `cancelAllSpreadOrders(params)` | 🔒 | POST | `/v5/spread/order/cancel-all` | Cancel all spread orders. |
+| `getSpreadOpenOrders(params)` | 🔒 | GET | `/v5/spread/order/realtime` | Active spread orders. |
+| `getSpreadOrderHistory(params)` | 🔒 | GET | `/v5/spread/order/history` | Historical spread orders. |
+| `getSpreadTradeHistory(params)` | 🔒 | GET | `/v5/spread/execution/list` | Spread execution history. |
+
+---
+
+## Orders
+
+<Note>
+  All order methods require a valid API key and secret.
+</Note>
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `submitOrder(params)` | 🔒 | POST | `/v5/order/create` | Place a new order. |
+| `amendOrder(params)` | 🔒 | POST | `/v5/order/amend` | Amend an open order. |
+| `cancelOrder(params)` | 🔒 | POST | `/v5/order/cancel` | Cancel an open order. |
+| `getActiveOrders(params)` | 🔒 | GET | `/v5/order/realtime` | Query active (open) orders. |
+| `cancelAllOrders(params)` | 🔒 | POST | `/v5/order/cancel-all` | Cancel all open orders. |
+| `getHistoricOrders(params)` | 🔒 | GET | `/v5/order/history` | Historical order records. |
+| `getExecutionList(params)` | 🔒 | GET | `/v5/execution/list` | Trade execution history. |
+| `batchSubmitOrders(category, orders)` | 🔒 | POST | `/v5/order/create-batch` | Place multiple orders in one request. |
+| `batchAmendOrders(category, orders)` | 🔒 | POST | `/v5/order/amend-batch` | Amend multiple orders in one request. |
+| `batchCancelOrders(category, orders)` | 🔒 | POST | `/v5/order/cancel-batch` | Cancel multiple orders in one request. |
+| `getSpotBorrowCheck(params)` | 🔒 | GET | `/v5/order/spot-borrow-check` | Check borrow quota before spot order. |
+| `setDisconnectCancelAllWindow(params)` | 🔒 | POST | `/v5/order/disconnected-cancel-all` | Set DCP (disconnect cancel all) window. |
+| `setDisconnectCancelAllWindowV2(params)` | 🔒 | POST | `/v5/order/disconnected-cancel-all` | V2 DCP window setter. |
+| `preCheckOrder(params)` | 🔒 | POST | `/v5/order/pre-check` | Pre-flight order validation. |
+
+### Example — place and cancel an order
+
+```typescript
+// Submit a limit buy order
+const order = await client.submitOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  side: 'Buy',
+  orderType: 'Limit',
+  qty: '0.01',
+  price: '30000',
+  timeInForce: 'GTC',
+});
+
+// Cancel the same order
+await client.cancelOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderId: order.result.orderId,
+});
+```
+
+### Example — batch orders
+
+```typescript
+const result = await client.batchSubmitOrders('linear', [
+  { symbol: 'BTCUSDT', side: 'Buy', orderType: 'Limit', qty: '0.01', price: '29000', timeInForce: 'GTC' },
+  { symbol: 'ETHUSDT', side: 'Sell', orderType: 'Limit', qty: '0.1', price: '2000', timeInForce: 'GTC' },
+]);
+```
+
+---
+
+## Strategy Orders
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `createStrategyOrder(params)` | 🔒 | POST | `/v5/strategy/create` | Create a TWAP / algo strategy order. |
+| `getStrategyList(params)` | 🔒 | GET | `/v5/strategy/list` | Query active strategy list. |
+| `getStrategyOrderList(params)` | 🔒 | GET | `/v5/strategy/order-list` | Child orders of a strategy. |
+| `stopStrategy(params)` | 🔒 | POST | `/v5/strategy/stop` | Stop a running strategy. |
+
+---
+
+## Positions
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getPositionInfo(params)` | 🔒 | GET | `/v5/position/list` | Query open positions. |
+| `setLeverage(params)` | 🔒 | POST | `/v5/position/set-leverage` | Set leverage for a symbol. |
+| `switchIsolatedMargin(params)` | 🔒 | POST | `/v5/position/switch-isolated` | Toggle between cross and isolated margin. |
+| `setTPSLMode(params)` | 🔒 | POST | `/v5/position/set-tpsl-mode` | Set TP/SL mode (Full or Partial). |
+| `switchPositionMode(params)` | 🔒 | POST | `/v5/position/switch-mode` | Switch between one-way and hedge mode. |
+| `setRiskLimit(params)` | 🔒 | POST | `/v5/position/set-risk-limit` | Set the risk limit tier. |
+| `setTradingStop(params)` | 🔒 | POST | `/v5/position/trading-stop` | Set take-profit / stop-loss / trailing stop. |
+| `setAutoAddMargin(params)` | 🔒 | POST | `/v5/position/set-auto-add-margin` | Enable or disable auto-add margin. |
+| `addOrReduceMargin(params)` | 🔒 | POST | `/v5/position/add-margin` | Manually add or reduce isolated margin. |
+| `getClosedPnL(params)` | 🔒 | GET | `/v5/position/closed-pnl` | Closed profit & loss history. |
+| `getClosedOptionsPositions(params)` | 🔒 | GET | `/v5/position/get-closed-positions` | Closed options position records. |
+| `movePosition(params)` | 🔒 | POST | `/v5/position/move-positions` | Move a position between sub-accounts. |
+| `getMovePositionHistory(params)` | 🔒 | GET | `/v5/position/move-history` | History of position moves. |
+| `confirmNewRiskLimit(params)` | 🔒 | POST | `/v5/position/confirm-pending-mmr` | Confirm a pending risk-limit change. |
+
+### Example — set leverage
+
+```typescript
+await client.setLeverage({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  buyLeverage: '10',
+  sellLeverage: '10',
+});
+```
+
+---
+
+## Pre-Upgrade Data
+
+These endpoints expose order/position history that existed before a unified account upgrade.
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getPreUpgradeOrderHistory(params)` | 🔒 | GET | `/v5/pre-upgrade/order/history` | Pre-upgrade order history. |
+| `getPreUpgradeTradeHistory(params)` | 🔒 | GET | `/v5/pre-upgrade/execution/list` | Pre-upgrade execution list. |
+| `getPreUpgradeClosedPnl(params)` | 🔒 | GET | `/v5/pre-upgrade/position/closed-pnl` | Pre-upgrade closed PnL. |
+| `getPreUpgradeTransactions(params)` | 🔒 | GET | `/v5/pre-upgrade/account/transaction-log` | Pre-upgrade transaction log. |
+| `getPreUpgradeOptionDeliveryRecord(params)` | 🔒 | GET | `/v5/pre-upgrade/asset/delivery-record` | Pre-upgrade option delivery records. |
+| `getPreUpgradeUSDCSessionSettlements(params)` | 🔒 | GET | `/v5/pre-upgrade/asset/settlement-record` | Pre-upgrade USDC session settlements. |
+
+---
+
+## Account
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getWalletBalance(params)` | 🔒 | GET | `/v5/account/wallet-balance` | Wallet balance by account type. |
+| `getTransferableAmount(params)` | 🔒 | GET | `/v5/account/withdrawal` | Transferable coin amount. |
+| `getAccountInstrumentsInfo(params)` | 🔒 | GET | `/v5/account/instruments-info` | Per-account instrument settings. |
+| `upgradeToUnifiedAccount()` | 🔒 | POST | `/v5/account/upgrade-to-uta` | Upgrade classic account to unified. |
+| `getBorrowHistory(params)` | 🔒 | GET | `/v5/account/borrow-history` | Borrow order history. |
+| `repayLiability(params)` | 🔒 | POST | `/v5/account/quick-repayment` | Quick-repay liability. |
+| `manualRepay(params)` | 🔒 | POST | `/v5/account/repay` | Manual liability repayment. |
+| `setCollateralCoin(params)` | 🔒 | POST | `/v5/account/set-collateral-switch` | Toggle collateral for a single coin. |
+| `batchSetCollateralCoin(params)` | 🔒 | POST | `/v5/account/set-collateral-switch-batch` | Toggle collateral for multiple coins. |
+| `getCollateralInfo(currency)` | 🔒 | GET | `/v5/account/collateral-info` | Collateral info for a currency. |
+| `getCoinGreeks(params)` | 🔒 | GET | `/v5/asset/coin-greeks` | Option greeks for portfolio. |
+| `getFeeRate(params)` | 🔒 | GET | `/v5/account/fee-rate` | Maker/taker fee rates. |
+| `getAccountInfo()` | 🔒 | GET | `/v5/account/info` | General account information. |
+| `getDCPInfo()` | 🔒 | GET | `/v5/account/query-dcp-info` | Disconnect cancel policy info. |
+| `getTransactionLog(params)` | 🔒 | GET | `/v5/account/transaction-log` | Transaction log (unified account). |
+| `getClassicTransactionLogs(params)` | 🔒 | GET | `/v5/account/contract-transaction-log` | Transaction log (classic account). |
+| `getSMPGroup()` | 🔒 | GET | `/v5/account/smp-group` | Self-match prevention group info. |
+| `setMarginMode(params)` | 🔒 | POST | `/v5/account/set-margin-mode` | Set account margin mode. |
+| `setSpotHedging(params)` | 🔒 | POST | `/v5/account/set-hedging-mode` | Enable/disable spot hedging. |
+| `setLimitPriceAction(params)` | 🔒 | POST | `/v5/account/set-limit-px-action` | Configure limit price action. |
+| `getLimitPriceAction(params)` | 🔒 | GET | `/v5/account/user-setting-config` | Get limit price action setting. |
+| `setDeltaNeutralMode(params)` | 🔒 | POST | `/v5/account/set-delta-mode` | Set delta neutral mode. |
+| `setMMP(params)` | 🔒 | POST | `/v5/account/mmp-modify` | Configure market maker protection. |
+| `resetMMP(params)` | 🔒 | POST | `/v5/account/mmp-reset` | Reset MMP. |
+| `getMMPState(params)` | 🔒 | GET | `/v5/account/mmp-state` | Current MMP state. |
+| `getOptionAssetInfo(params)` | 🔒 | GET | `/v5/account/option-asset-info` | Options asset summary. |
+| `getPayInfo()` | 🔒 | GET | `/v5/account/pay-info` | Pay account info. |
+| `getTradeInfoForAnalysis(params)` | 🔒 | GET | `/v5/account/trade-info-for-analysis` | Trade analysis data. |
+
+---
+
+## Asset
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getAssetOverview(params)` | 🔒 | GET | `/v5/asset/asset-overview` | Overview of all assets. |
+| `getPortfolioMarginInfo(params)` | 🔒 | GET | `/v5/asset/portfolio-margin` | Portfolio margin details. |
+| `getTotalMembersAssets(params)` | 🔒 | GET | `/v5/asset/total-members-assets` | Total asset value across members. |
+| `getFundingAccountTransactionHistory(params)` | 🔒 | GET | `/v5/asset/fundinghistory` | Funding account transaction log. |
+| `getDeliveryRecord(params)` | 🔒 | GET | `/v5/asset/delivery-record` | Option/futures delivery records. |
+| `getSettlementRecords(params)` | 🔒 | GET | `/v5/asset/settlement-record` | USDC session settlement records. |
+| `getCoinExchangeRecords(params)` | 🔒 | GET | `/v5/asset/exchange/order-record` | Coin exchange records. |
+| `getCoinInfo(params)` | 🔒 | GET | `/v5/asset/coin/query-info` | Coin withdrawal/deposit configuration. |
+| `getSubUID(params)` | 🔒 | GET | `/v5/asset/transfer/query-sub-member-list` | Transferable sub-UIDs. |
+| `getAssetInfo(params)` | 🔒 | GET | `/v5/asset/transfer/query-asset-info` | Asset info for a UID. |
+| `getAllCoinsBalance(params)` | 🔒 | GET | `/v5/asset/transfer/query-account-coins-balance` | All coin balances for an account type. |
+| `getCoinBalance(params)` | 🔒 | GET | `/v5/asset/transfer/query-account-coin-balance` | Balance of a single coin. |
+| `getWithdrawableAmount(params)` | 🔒 | GET | `/v5/asset/withdraw/withdrawable-amount` | Maximum withdrawable amount. |
+| `getTransferableCoinList(params)` | 🔒 | GET | `/v5/asset/transfer/query-transfer-coin-list` | Coins available for internal transfer. |
+| `createInternalTransfer(params)` | 🔒 | POST | `/v5/asset/transfer/inter-transfer` | Execute an internal transfer. |
+| `getInternalTransferRecords(params)` | 🔒 | GET | `/v5/asset/transfer/query-inter-transfer-list` | Internal transfer history. |
+| `enableUniversalTransferForSubUIDs(params)` | 🔒 | POST | `/v5/asset/transfer/save-transfer-sub-member` | Enable universal transfer for sub-UIDs. |
+| `createUniversalTransfer(params)` | 🔒 | POST | `/v5/asset/transfer/universal-transfer` | Universal cross-account transfer. |
+| `getUniversalTransferRecords(params)` | 🔒 | GET | `/v5/asset/transfer/query-universal-transfer-list` | Universal transfer history. |
+| `getAllowedDepositCoinInfo(params)` | 🔒 | GET | `/v5/asset/deposit/query-allowed-list` | Allowed deposit coins. |
+| `setDepositAccount(params)` | 🔒 | POST | `/v5/asset/deposit/deposit-to-account` | Set deposit target account. |
+| `getDepositRecords(params)` | 🔒 | GET | `/v5/asset/deposit/query-record` | Deposit history. |
+| `getSubAccountDepositRecords(params)` | 🔒 | GET | `/v5/asset/deposit/query-sub-member-record` | Sub-account deposit history. |
+| `getInternalDepositRecords(params)` | 🔒 | GET | `/v5/asset/deposit/query-internal-record` | Internal deposit records. |
+| `getMasterDepositAddress(params)` | 🔒 | GET | `/v5/asset/deposit/query-address` | Master account deposit address. |
+| `getSubDepositAddress(params)` | 🔒 | GET | `/v5/asset/deposit/query-sub-member-address` | Sub-account deposit address. |
+| `querySubMemberAddress(params)` | 🔒 | GET | `/v5/asset/deposit/query-sub-member-address` | Query sub-member deposit address. |
+| `getWithdrawalRecords(params)` | 🔒 | GET | `/v5/asset/withdraw/query-record` | Withdrawal history. |
+| `getWithdrawalAddressList(params)` | 🔒 | GET | `/v5/asset/withdraw/query-address` | Saved withdrawal addresses. |
+| `getExchangeEntities(params)` | 🔒 | GET | `/v5/asset/withdraw/vasp/list` | Travel-rule VASP list. |
+| `submitWithdrawal(params)` | 🔒 | POST | `/v5/asset/withdraw/create` | Submit a withdrawal. |
+| `cancelWithdrawal(params)` | 🔒 | POST | `/v5/asset/withdraw/cancel` | Cancel a pending withdrawal. |
+| `getConvertCoins(params)` | 🔒 | GET | `/v5/asset/exchange/query-coin-list` | Coins available for conversion. |
+| `requestConvertQuote(params)` | 🔒 | POST | `/v5/asset/exchange/quote-apply` | Request a conversion quote. |
+| `confirmConvertQuote(params)` | 🔒 | POST | `/v5/asset/exchange/convert-execute` | Confirm and execute a conversion. |
+| `getConvertStatus(params)` | 🔒 | GET | `/v5/asset/exchange/convert-result-query` | Conversion status. |
+| `getConvertHistory(params)` | 🔒 | GET | `/v5/asset/exchange/query-convert-history` | Conversion history. |
+| `getSmallBalanceList(params)` | 🔒 | GET | `/v5/asset/covert/small-balance-list` | Small balances eligible for conversion. |
+| `getFiatTradingPairList(params)` | 🔒 | GET | `/v5/fiat/query-coin-list` | Fiat trading pair list. |
+
+---
+
+## User & Sub-Accounts
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `createSubMember(params)` | 🔒 | POST | `/v5/user/create-sub-member` | Create a new sub-account. |
+| `createSubUIDAPIKey(params)` | 🔒 | POST | `/v5/user/create-sub-api` | Create API key for sub-account. |
+| `getSubUIDList(params)` | 🔒 | GET | `/v5/user/query-sub-members` | List sub-accounts (paginated). |
+| `getSubUIDListUnlimited(params)` | 🔒 | GET | `/v5/user/submembers` | List all sub-accounts (unlimited). |
+| `setSubUIDFrozenState(params)` | 🔒 | POST | `/v5/user/frozen-sub-member` | Freeze or unfreeze a sub-account. |
+| `getQueryApiKey()` | 🔒 | GET | `/v5/user/query-api` | Query current API key info. |
+| `getSubAccountAllApiKeys(params)` | 🔒 | GET | `/v5/user/sub-apikeys` | All API keys for a sub-account. |
+| `getUIDWalletType(params)` | 🔒 | GET | `/v5/user/get-member-type` | Account wallet type. |
+| `updateMasterApiKey(params)` | 🔒 | POST | `/v5/user/update-api` | Update master account API key. |
+| `updateSubApiKey(params)` | 🔒 | POST | `/v5/user/update-sub-api` | Update sub-account API key. |
+| `deleteSubMember(params)` | 🔒 | POST | `/v5/user/del-submember` | Delete a sub-account. |
+| `deleteMasterApiKey(params)` | 🔒 | POST | `/v5/user/delete-api` | Delete master API key. |
+| `deleteSubApiKey(params)` | 🔒 | POST | `/v5/user/delete-sub-api` | Delete sub-account API key. |
+| `getAffiliateUserList(params)` | 🔒 | GET | `/v5/affiliate/aff-user-list` | Affiliate user list. |
+| `getAffiliateSubAffiliateList(params)` | 🔒 | GET | `/v5/affiliate/affiliate-sub-list` | Sub-affiliate list. |
+| `getAffiliateUserInfo(params)` | 🔒 | GET | `/v5/user/aff-customer-info` | Affiliate customer info. |
+| `getFriendReferrals(params)` | 🔒 | GET | `/v5/user/invitation/referrals` | Friend referral list. |
+| `signAgreement(params)` | 🔒 | POST | `/v5/user/agreement` | Sign a user agreement. |
+
+---
+
+## Earn
+
+The Earn section covers staking, fixed-term products, advance earn, liquidity mining, token earn, and portfolio wealth management (PWM).
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getEarnProduct(params)` | — | GET | `/v5/earn/product` | List available earn products. |
+| `submitStakeRedeem(params)` | 🔒 | POST | `/v5/earn/place-order` | Stake or redeem an earn product. |
+| `getEarnOrderHistory(params)` | 🔒 | GET | `/v5/earn/order` | Earn order history. |
+| `getEarnPosition(params)` | 🔒 | GET | `/v5/earn/position` | Current earn positions. |
+| `modifyEarnPosition(params)` | 🔒 | POST | `/v5/earn/position/modify` | Modify an earn position. |
+| `getEarnYieldHistory(params)` | 🔒 | GET | `/v5/earn/yield` | Daily yield history. |
+| `getEarnAprHistory(params)` | — | GET | `/v5/earn/apr-history` | APR history for earn products. |
+| `getFixedTermEarnProduct(params)` | — | GET | `/v5/earn/fixed-term/product` | Fixed-term earn products. |
+| `submitFixedTermEarnOrder(params)` | 🔒 | POST | `/v5/earn/fixed-term/place-order` | Subscribe to fixed-term earn. |
+| `redeemFixedTermEarn(params)` | 🔒 | POST | `/v5/earn/fixed-term/redeem` | Redeem fixed-term earn. |
+| `getAdvanceEarnProduct(params)` | — | GET | `/v5/earn/advance/product` | Advance earn products. |
+| `submitAdvanceEarnPlaceOrder(params)` | 🔒 | POST | `/v5/earn/advance/place-order` | Place an advance earn order. |
+| `getLiquidityMiningProduct(params)` | — | GET | `/v5/earn/liquidity-mining/product` | Liquidity mining products. |
+| `getEarnTokenProduct(params)` | — | GET | `/v5/earn/token/product` | Token earn products. |
+| `submitEarnTokenOrder(params)` | 🔒 | POST | `/v5/earn/token/place-order` | Place a token earn order. |
+| `getPwmInvestmentPlanList(params)` | 🔒 | GET | `/v5/earn/pwm/investment-plan/list` | PWM investment plan list. |
+| `subscribePwmInvestmentPlan(params)` | 🔒 | POST | `/v5/earn/pwm/investment-plan/subscribe` | Subscribe to a PWM plan. |
+
+<Tip>
+  The full list of Earn and PWM methods (30+) is available in the [endpoint function list on GitHub](https://github.com/tiagosiebler/bybit-api/blob/master/docs/endpointFunctionList.md).
+</Tip>
+
+---
+
+## Spot Margin Trading
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getVIPMarginData(params)` | — | GET | `/v5/spot-margin-trade/data` | VIP margin data. |
+| `getHistoricalInterestRate(params)` | 🔒 | GET | `/v5/spot-margin-trade/interest-rate-history` | Historical interest rates. |
+| `toggleSpotMarginTrade(params)` | 🔒 | POST | `/v5/spot-margin-trade/switch-mode` | Enable or disable spot margin. |
+| `setSpotMarginLeverage(params)` | 🔒 | POST | `/v5/spot-margin-trade/set-leverage` | Set spot margin leverage. |
+| `getSpotMarginState(params)` | 🔒 | GET | `/v5/spot-margin-trade/state` | Current spot margin state. |
+| `manualBorrow(params)` | 🔒 | POST | `/v5/account/borrow` | Manually borrow funds. |
+| `manualRepayWithoutConversion(params)` | 🔒 | POST | `/v5/account/no-convert-repay` | Repay without coin conversion. |
+| `getSpotMarginCoinInfo(params)` | 🔒 | GET | `/v5/spot-cross-margin-trade/pledge-token` | Cross margin collateral coins. |
+| `spotMarginBorrow(params)` | 🔒 | POST | `/v5/spot-cross-margin-trade/loan` | Borrow via cross margin. |
+| `spotMarginRepay(params)` | 🔒 | POST | `/v5/spot-cross-margin-trade/repay` | Repay cross margin loan. |
+| `toggleSpotCrossMarginTrade(params)` | 🔒 | POST | `/v5/spot-cross-margin-trade/switch` | Toggle cross margin trading. |
+
+---
+
+## Crypto Loan
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getCollateralCoins(params)` | — | GET | `/v5/crypto-loan/collateral-data` | Available collateral coins. |
+| `getBorrowableCoins(params)` | — | GET | `/v5/crypto-loan/loanable-data` | Available borrowable coins. |
+| `getAccountBorrowCollateralLimit(params)` | 🔒 | GET | `/v5/crypto-loan/borrowable-collateralisable-number` | Borrowable and collateralisable limits. |
+| `borrowCryptoLoan(params)` | 🔒 | POST | `/v5/crypto-loan/borrow` | Borrow a crypto loan. |
+| `repayCryptoLoan(params)` | 🔒 | POST | `/v5/crypto-loan/repay` | Repay a crypto loan. |
+| `getUnpaidLoanOrders(params)` | 🔒 | GET | `/v5/crypto-loan/ongoing-orders` | Active loan orders. |
+| `getRepaymentHistory(params)` | 🔒 | GET | `/v5/crypto-loan/repayment-history` | Loan repayment history. |
+| `getCompletedLoanOrderHistory(params)` | 🔒 | GET | `/v5/crypto-loan/borrow-history` | Completed loan history. |
+| `adjustCollateralAmount(params)` | 🔒 | POST | `/v5/crypto-loan/adjust-ltv` | Adjust loan-to-value ratio. |
+| `borrowFlexible(params)` | 🔒 | POST | `/v5/crypto-loan-flexible/borrow` | Borrow via flexible loan. |
+| `repayFlexible(params)` | 🔒 | POST | `/v5/crypto-loan-flexible/repay` | Repay flexible loan. |
+
+---
+
+## Institutional Lending
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getInstitutionalLendingProductInfo(params)` | — | GET | `/v5/ins-loan/product-infos` | Institutional loan products. |
+| `getInstitutionalLendingMarginCoinInfo(params)` | — | GET | `/v5/ins-loan/ensure-tokens` | Margin coin info. |
+| `getInstitutionalLendingLoanOrders(params)` | 🔒 | GET | `/v5/ins-loan/loan-order` | Institutional loan orders. |
+| `getInstitutionalLendingRepayOrders(params)` | 🔒 | GET | `/v5/ins-loan/repaid-history` | Repayment history. |
+| `getInstitutionalLendingLTV(params)` | 🔒 | GET | `/v5/ins-loan/ltv` | Current LTV. |
+| `bindOrUnbindUID(params)` | 🔒 | POST | `/v5/ins-loan/association-uid` | Bind/unbind UID to institutional loan. |
+| `repayInstitutionalLoan(params)` | 🔒 | POST | `/v5/ins-loan/repay-loan` | Repay institutional loan. |
+
+---
+
+## Broker
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getExchangeBrokerEarnings(params)` | 🔒 | GET | `/v5/broker/earnings-info` | Broker earnings info. |
+| `getExchangeBrokerAccountInfo()` | 🔒 | GET | `/v5/broker/account-info` | Broker account summary. |
+| `getBrokerSubAccountDeposits(params)` | 🔒 | GET | `/v5/broker/asset/query-sub-member-deposit-record` | Sub-account deposit records. |
+| `getBrokerVoucherSpec(params)` | 🔒 | POST | `/v5/broker/award/info` | Voucher specification. |
+| `issueBrokerVoucher(params)` | 🔒 | POST | `/v5/broker/award/distribute-award` | Issue a broker voucher. |
+| `getBrokerIssuedVoucher(params)` | 🔒 | POST | `/v5/broker/award/distribution-record` | Issued voucher records. |
+| `setBrokerRateLimit(params)` | 🔒 | POST | `/v5/broker/apilimit/set` | Set broker rate limit for a sub-account. |
+| `getBrokerRateLimitCap(params)` | 🔒 | GET | `/v5/broker/apilimit/query-cap` | Broker rate limit cap. |
+| `getAllBrokerRateLimits(params)` | 🔒 | GET | `/v5/broker/apilimit/query-all` | All broker rate limit entries. |
+
+---
+
+## P2P
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getP2PAccountCoinsBalance(params)` | 🔒 | GET | `/v5/asset/transfer/query-account-coins-balance` | P2P account coin balances. |
+| `getP2POnlineAds(params)` | 🔒 | POST | `/v5/p2p/item/online` | Browse online P2P ads. |
+| `createP2PAd(params)` | 🔒 | POST | `/v5/p2p/item/create` | Create a P2P ad. |
+| `cancelP2PAd(params)` | 🔒 | POST | `/v5/p2p/item/cancel` | Cancel a P2P ad. |
+| `updateP2PAd(params)` | 🔒 | POST | `/v5/p2p/item/update` | Update a P2P ad. |
+| `getP2POrders(params)` | 🔒 | POST | `/v5/p2p/order/simplifyList` | List P2P orders. |
+| `getP2POrderDetail(params)` | 🔒 | POST | `/v5/p2p/order/info` | P2P order detail. |
+| `markP2POrderAsPaid(params)` | 🔒 | POST | `/v5/p2p/order/pay` | Mark an order as paid. |
+| `releaseP2POrder(params)` | 🔒 | POST | `/v5/p2p/order/finish` | Release crypto for a P2P order. |
+| `sendP2POrderMessage(params)` | 🔒 | POST | `/v5/p2p/order/message/send` | Send an order chat message. |
+| `getP2PUserInfo(params)` | 🔒 | POST | `/v5/p2p/user/personal/info` | P2P user profile. |
+
+---
+
+## RFQ (Request for Quote)
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `createRFQ(params)` | 🔒 | POST | `/v5/rfq/create-rfq` | Create a new RFQ. |
+| `getRFQConfig(params)` | 🔒 | GET | `/v5/rfq/config` | RFQ configuration. |
+| `cancelRFQ(params)` | 🔒 | POST | `/v5/rfq/cancel-rfq` | Cancel an RFQ. |
+| `cancelAllRFQ(params)` | 🔒 | POST | `/v5/rfq/cancel-all-rfq` | Cancel all RFQs. |
+| `createRFQQuote(params)` | 🔒 | POST | `/v5/rfq/create-quote` | Create a quote on an RFQ. |
+| `executeRFQQuote(params)` | 🔒 | POST | `/v5/rfq/execute-quote` | Execute a quote. |
+| `cancelRFQQuote(params)` | 🔒 | POST | `/v5/rfq/cancel-quote` | Cancel a quote. |
+| `cancelAllRFQQuotes(params)` | 🔒 | POST | `/v5/rfq/cancel-all-quotes` | Cancel all quotes. |
+| `getRFQRealtimeInfo(params)` | 🔒 | GET | `/v5/rfq/rfq-realtime` | Real-time RFQ data. |
+| `getRFQHistory(params)` | 🔒 | GET | `/v5/rfq/rfq-list` | RFQ history. |
+| `getRFQTrades(params)` | 🔒 | GET | `/v5/rfq/trade-list` | RFQ trade list. |
+
+---
+
+## Alpha Trading
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `getAlphaTradeQuote(params)` | 🔒 | POST | `/v5/alpha/trade/quote` | Get alpha trade quote. |
+| `executeAlphaTradePurchase(params)` | 🔒 | POST | `/v5/alpha/trade/purchase` | Execute alpha purchase. |
+| `executeAlphaTradeRedeem(params)` | 🔒 | POST | `/v5/alpha/trade/redeem` | Execute alpha redemption. |
+| `getAlphaBizTokenList(params)` | 🔒 | POST | `/v5/alpha/trade/biz-token-list` | Business token list. |
+
+---
+
+## API Rate Limits
+
+| Method | Auth | HTTP | Endpoint | Description |
+|--------|:----:|:----:|----------|-------------|
+| `setApiRateLimit(params)` | 🔒 | POST | `/v5/apilimit/set` | Set custom rate limit. |
+| `queryApiRateLimit(params)` | 🔒 | GET | `/v5/apilimit/query` | Query current rate limit. |
+| `getRateLimitCap(params)` | 🔒 | GET | `/v5/apilimit/query-cap` | Rate limit cap. |
+| `getAllRateLimits(params)` | 🔒 | GET | `/v5/apilimit/query-all` | All rate limit entries. |
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Types Reference" href="/reference/types">
+    TypeScript interfaces for all request and response shapes.
+  </Card>
+  <Card title="WebsocketClient" href="/reference/websocket-client">
+    Real-time data subscriptions via WebSocket.
+  </Card>
+  <Card title="WebsocketAPIClient" href="/reference/websocket-api-client">
+    Promise-based order management over WebSocket.
+  </Card>
+  <Card title="Full Endpoint List" href="https://github.com/tiagosiebler/bybit-api/blob/master/docs/endpointFunctionList.md">
+    Complete auto-generated endpoint → method mapping on GitHub.
+  </Card>
+</CardGroup>

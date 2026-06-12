@@ -1,0 +1,211 @@
+---
+title: "WebSocket Integration Overview for bybit-api"
+sidebarTitle: "Overview"
+description: "bybit-api's WebsocketClient manages connections, authentication, heartbeats, and reconnects automatically. Subscribe to any public or private topic in one call."
+---
+
+The `WebsocketClient` in `bybit-api` is a full-featured WebSocket manager that handles every aspect of connectivity for you. Connections open on first subscribe, authentication happens automatically when credentials are provided, heartbeats (ping/pong) keep connections alive, and dropped connections are silently respawned with all topics resubscribed. You write event handlers — the SDK handles the rest.
+
+## What WebsocketClient Provides
+
+- **Automatic connection management** — connections open lazily when you first subscribe to a topic, so there is no explicit `connect()` call required.
+- **Authentication on connect** — supply `key` and `secret` once in the constructor; the SDK signs and sends auth frames before any private topic subscription.
+- **Heartbeats** — a configurable ping/pong cycle keeps connections alive and detects silent disconnects.
+- **Reconnect + resubscribe** — when a connection drops, the SDK reopens it and replays all tracked subscriptions without any code on your part.
+- **Multi-category routing** — a single client instance correctly routes spot, linear, inverse, option, and private topics to their respective Bybit WebSocket endpoints.
+
+## WebSocket Connection Model
+
+Bybit exposes separate WebSocket endpoints for each product category. The SDK tracks these as named **WsKeys**, defined in `WS_KEY_MAP`:
+
+| WsKey | Bybit Endpoint | Purpose |
+|---|---|---|
+| `v5SpotPublic` | `wss://stream.bybit.com/v5/public/spot` | Spot public market data |
+| `v5LinearPublic` | `wss://stream.bybit.com/v5/public/linear` | Linear perp/futures public data |
+| `v5InversePublic` | `wss://stream.bybit.com/v5/public/inverse` | Inverse perp/futures public data |
+| `v5OptionPublic` | `wss://stream.bybit.com/v5/public/option` | Options public data |
+| `v5Private` | `wss://stream.bybit.com/v5/private` | All private account streams |
+| `v5PrivateTrade` | `wss://stream.bybit.com/v5/trade` | WebSocket API (order submission) |
+
+When you call `subscribeV5(topic, category)`, the SDK automatically determines which WsKey to use based on the topic name and category, then opens (or reuses) the appropriate connection.
+
+<Note>
+  Testnet uses `stream-testnet.bybit.com` and demo trading uses `stream-demo.bybit.com/v5/private`. Switch between environments via the `testnet` or `demoTrading` constructor options — no URL changes needed.
+</Note>
+
+## Constructor and Configuration
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient({
+  key: 'YOUR_API_KEY',       // Required for private topics & WS API
+  secret: 'YOUR_API_SECRET', // Required for private topics & WS API
+  testnet: false,            // Connect to testnet (default: false)
+  demoTrading: false,        // Connect to demo trading env (default: false)
+  market: 'v5',              // API market — only 'v5' is supported
+  pingInterval: 10000,       // Ms between ping frames (default: 10 000)
+  pongTimeout: 5000,         // Ms to wait for pong before assuming dead (default: 5 000)
+  reconnectTimeout: 500,     // Ms before attempting reconnect (default: 500)
+  recvWindow: 5000,          // Recv window for WS auth signature (ms)
+});
+```
+
+All options are optional. A client created with no arguments works immediately for public topics.
+
+### Configuration Reference
+
+<ParamField path="key" type="string">
+  Your Bybit API key. Required to subscribe to private topics or use the WebSocket API.
+</ParamField>
+
+<ParamField path="secret" type="string">
+  Your Bybit API secret. Required alongside `key` for authenticated connections.
+</ParamField>
+
+<ParamField path="testnet" type="boolean" default="false">
+  Connect to Bybit's testnet environment. Set to `false` when using demo trading.
+</ParamField>
+
+<ParamField path="demoTrading" type="boolean" default="false">
+  Connect to Bybit's V5 demo trading environment. Note: demo trading does **not** support the WebSocket API as of January 2025.
+</ParamField>
+
+<ParamField path="market" type="'v5'" default="'v5'">
+  The API market group. Only `'v5'` is supported.
+</ParamField>
+
+<ParamField path="pingInterval" type="number" default="10000">
+  Milliseconds between outgoing ping frames. Keeps connections alive.
+</ParamField>
+
+<ParamField path="pongTimeout" type="number" default="5000">
+  Milliseconds to wait for a pong reply. If no pong arrives within this window the connection is considered dead and a reconnect is triggered.
+</ParamField>
+
+<ParamField path="reconnectTimeout" type="number" default="500">
+  Milliseconds to wait before spawning a new connection after a drop.
+</ParamField>
+
+<ParamField path="recvWindow" type="number" default="5000">
+  Size of the recv window (ms) included in the WebSocket auth signature.
+</ParamField>
+
+<ParamField path="wsUrl" type="string">
+  Override the WebSocket URL entirely (e.g. for a proxy or alternative domain).
+</ParamField>
+
+<ParamField path="customSignMessageFn" type="(message: string, secret: string) => Promise<string>">
+  Provide your own HMAC signing function. Useful for using Node.js's faster `crypto.createHmac` instead of the built-in Web Crypto API.
+</ParamField>
+
+## Event System
+
+All data and lifecycle events are emitted on the `WebsocketClient` instance. Subscribe with `.on(event, handler)`.
+
+| Event | When it fires | Payload |
+|---|---|---|
+| `update` | A topic update arrives (market data or account event) | Parsed JSON object with a `topic` and `data` field, plus an injected `wsKey` |
+| `open` | A WebSocket connection is established | `{ wsKey: string, event: object }` |
+| `response` | A reply to a subscribe/unsubscribe/ping command | Parsed reply object |
+| `authenticated` | The SDK successfully authenticated a private connection | `{ wsKey: string }` |
+| `close` | A connection closes | — |
+| `exception` | An error or rejected command is received | Error/event details |
+| `reconnect` | Automatic reconnection is starting | `{ wsKey: string }` |
+| `reconnected` | Reconnection succeeded | `{ wsKey: string }` |
+
+<Note>
+  `update` is the primary data event. All subscription topic messages — orderbooks, klines, position changes, wallet updates — arrive on `update`. Filter by `data.topic` to distinguish between streams.
+</Note>
+
+## Basic Setup Example
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+// Instantiate the client (add key/secret for private topics)
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+
+// Listen for data updates — this fires for every subscribed topic
+wsClient.on('update', (data) => {
+  console.log('Received update for topic:', data.topic, data.data);
+});
+
+// Optional: monitor connection lifecycle
+wsClient.on('open', ({ wsKey }) => {
+  console.log('Connection opened:', wsKey);
+});
+wsClient.on('reconnect', ({ wsKey }) => {
+  console.log('Reconnecting:', wsKey);
+});
+wsClient.on('reconnected', ({ wsKey }) => {
+  console.log('Reconnected:', wsKey);
+});
+wsClient.on('exception', (err) => {
+  console.error('WebSocket exception:', err);
+});
+
+// Subscribe to public topics (connection opens automatically)
+wsClient.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+wsClient.subscribeV5('kline.5.BTCUSDT', 'spot');
+
+// Subscribe to private topics (authenticates automatically)
+wsClient.subscribeV5('position', 'linear');
+wsClient.subscribeV5(['order', 'wallet'], 'linear');
+```
+
+## Pre-connecting
+
+By default, connections open lazily when you first subscribe. If you want to eliminate the cold-start delay on the first subscription, you can request connections explicitly:
+
+```typescript
+// Open all public + private connections immediately
+const openPromises = wsClient.connectAll();
+await Promise.all(openPromises);
+
+// Or connect only to public endpoints
+await Promise.all(wsClient.connectPublic());
+
+// Or connect only to the private endpoint
+await wsClient.connectPrivate();
+```
+
+## Load Balancing Across Multiple Clients
+
+Each `WebsocketClient` instance maintains its own set of connections. To distribute a large number of topics across separate connections and reduce per-connection throughput, create multiple instances:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClientGroup1 = new WebsocketClient();
+const wsClientGroup2 = new WebsocketClient();
+
+// Attach event listeners to each client
+wsClientGroup1.on('update', (data) => console.log('Group 1:', data.topic));
+wsClientGroup2.on('update', (data) => console.log('Group 2:', data.topic));
+
+// Divide topics across clients
+wsClientGroup1.subscribeV5(['orderbook.1.BTCUSDT', 'orderbook.1.ETHUSDT'], 'linear');
+wsClientGroup2.subscribeV5(['orderbook.1.SOLUSDT', 'orderbook.1.XRPUSDT'], 'linear');
+```
+
+<Warning>
+  Never subscribe to the same topic on multiple `WebsocketClient` instances — you will receive duplicate messages, one per client.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Public Streams" icon="chart-line" href="/websockets/public-streams">
+    Subscribe to orderbook, kline, ticker, trade, and liquidation streams without authentication.
+  </Card>
+  <Card title="Private Streams" icon="lock" href="/websockets/private-streams">
+    Receive live position, order, execution, wallet, and greeks updates for your account.
+  </Card>
+  <Card title="WebSocket API" icon="bolt" href="/websockets/websocket-api">
+    Submit, amend, and cancel orders over WebSocket with a promise-based interface.
+  </Card>
+</CardGroup>

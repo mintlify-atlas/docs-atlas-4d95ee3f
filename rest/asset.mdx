@@ -1,0 +1,294 @@
+---
+title: "Asset Endpoints — Transfers, Deposits, and Withdrawals on Bybit"
+sidebarTitle: "Asset"
+description: "Manage internal transfers, deposits, withdrawals, and sub-account assets on Bybit using RestClientV5 asset management endpoints."
+---
+
+Asset endpoints manage the movement of funds across your Bybit accounts — between internal account types (e.g. Unified to Funding), between master and sub-accounts via universal transfers, and on/off-chain through deposits and withdrawals. All methods require an authenticated `RestClientV5` instance.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+---
+
+## Internal Transfers
+
+Internal transfers move funds between account types within the **same UID** — for example, from your Unified Trading Account to your Funding wallet, or vice versa.
+
+### `createInternalTransfer`
+
+Transfer a coin balance between two account types within your account.
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+
+const transfer = await client.createInternalTransfer(
+  uuidv4(),       // transferId — a unique UUID you generate
+  'USDT',         // coin
+  '500',          // amount as string
+  'UNIFIED',      // fromAccountType: AccountTypeV5
+  'FUND',         // toAccountType: AccountTypeV5
+);
+
+// AccountTypeV5: 'UNIFIED' | 'CONTRACT' | 'SPOT' | 'INVESTMENT' | 'OPTION' | 'FUND'
+
+if (transfer.retCode === 0) {
+  console.log('Transfer ID:', transfer.result.transferId);
+  console.log('Status:', transfer.result.status);
+}
+```
+
+<Note>
+  Use `getTransferableCoinList()` first to confirm which coins can be moved between two account types — not all coins are supported on every route.
+</Note>
+
+### `getInternalTransferRecords`
+
+Query your history of internal transfers between account types.
+
+```typescript
+const records = await client.getInternalTransferRecords({
+  coin: 'USDT',         // optional
+  status: 'SUCCESS',    // optional: 'SUCCESS' | 'PENDING' | 'FAILED'
+  startTime: Date.now() - 30 * 24 * 60 * 60 * 1000,
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+
+records.result.list.forEach((record) => {
+  console.log(record.transferId, record.coin, record.amount, record.status);
+});
+```
+
+---
+
+## Universal Transfers
+
+Universal transfers move funds between **different UIDs** — typically between master and sub-accounts, or sub-to-sub.
+
+### `createUniversalTransfer`
+
+Transfer funds from one member (UID) to another.
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+
+const universal = await client.createUniversalTransfer({
+  transferId: uuidv4(),
+  coin: 'USDT',
+  amount: '1000',
+  fromMemberId: 100000001,   // source UID (number)
+  toMemberId: 100000002,     // destination UID (number)
+  fromAccountType: 'FUND',   // AccountTypeV5
+  toAccountType: 'UNIFIED',  // AccountTypeV5
+});
+
+console.log('Universal transfer status:', universal.result.status);
+```
+
+---
+
+## Sub-Accounts
+
+### `getTransferableCoinList`
+
+Query which coins can be transferred between two account types on your account.
+
+```typescript
+const coins = await client.getTransferableCoinList(
+  'UNIFIED', // fromAccountType: AccountTypeV5
+  'FUND',    // toAccountType: AccountTypeV5
+);
+
+console.log('Transferable coins:', coins.result.list);
+// e.g. ['USDT', 'USDC', 'BTC', 'ETH', ...]
+```
+
+### `getSubUID`
+
+Fetch the list of sub-UIDs under your master account. Can only be called using the master API key.
+
+```typescript
+const subAccounts = await client.getSubUID();
+
+console.log('All sub UIDs:', subAccounts.result.subMemberIds);
+console.log('Transfer-enabled sub UIDs:', subAccounts.result.transferableSubMemberIds);
+```
+
+---
+
+## Deposits
+
+### `getDepositRecords`
+
+Query your deposit history. The time range between `startTime` and `endTime` must be 30 days or less; defaults to the last 30 days.
+
+```typescript
+const deposits = await client.getDepositRecords({
+  coin: 'USDT',      // optional
+  startTime: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+
+deposits.result.rows.forEach((deposit) => {
+  console.log(
+    deposit.coin,
+    deposit.amount,
+    deposit.status,
+    deposit.txID,
+    deposit.depositTime,
+  );
+});
+```
+
+### `getAllowedDepositCoinInfo`
+
+Query which coins and chains are currently supported for deposits. Useful for building deposit UIs or validating user intent.
+
+```typescript
+const allowed = await client.getAllowedDepositCoinInfo({
+  coin: 'USDT',   // optional — omit for all
+  chain: 'ETH',  // optional — filter by chain
+  limit: 20,
+});
+
+allowed.result.configList.forEach((item) => {
+  console.log(item.coin, item.chain, item.coinShowName, item.chainDeposit);
+});
+```
+
+### `getMasterDepositAddress`
+
+Fetch the on-chain deposit address for your master account.
+
+```typescript
+const address = await client.getMasterDepositAddress(
+  'USDT',  // coin (required)
+  'ETH',   // chainType (optional — omit for all chains)
+);
+
+address.result.chains.forEach((chain) => {
+  console.log(chain.chain, chain.addressDeposit, chain.tagDeposit);
+});
+```
+
+### `getSubDepositAddress`
+
+Fetch the deposit address for a specific sub-account. Requires the master account API key.
+
+```typescript
+const subAddress = await client.getSubDepositAddress(
+  'USDT',          // coin
+  'ETH',           // chainType
+  '100000002',     // subMemberId
+);
+
+console.log(subAddress.result.chains.addressDeposit);
+```
+
+---
+
+## Withdrawals
+
+<Warning>
+  Before calling `submitWithdrawal`, your destination wallet address must be whitelisted in your Bybit account security settings. Withdrawal API keys must have withdrawal permissions enabled.
+</Warning>
+
+### `submitWithdrawal`
+
+Submit a withdrawal request from Bybit to an external wallet address.
+
+```typescript
+const withdrawal = await client.submitWithdrawal({
+  coin: 'USDT',
+  chain: 'ETH',
+  address: '0xYourExternalWalletAddress',
+  tag: '',          // optional: memo/tag for applicable chains
+  amount: '100',
+  timestamp: Date.now(),
+  accountType: 'FUND',  // source account: 'FUND' | 'UNIFIED' | 'EARN' or combined e.g. 'FUND,UTA'
+  forceChain: 0,    // 0 = normal, 1 = force on-chain, 2 = Bybit UID withdraw (no chain needed)
+  feeType: 0,       // 0 = fee deducted from withdrawal amount, 1 = fee paid separately
+});
+
+if (withdrawal.retCode === 0) {
+  console.log('Withdrawal ID:', withdrawal.result.id);
+}
+```
+
+### `cancelWithdrawal`
+
+Cancel a pending withdrawal before it is processed.
+
+```typescript
+const cancel = await client.cancelWithdrawal(
+  'withdrawal-id-here', // the id returned from submitWithdrawal
+);
+
+console.log('Cancelled status:', cancel.result.status); // 0 = failed, 1 = success
+```
+
+### `getWithdrawalRecords`
+
+Query your withdrawal history.
+
+```typescript
+const withdrawals = await client.getWithdrawalRecords({
+  coin: 'USDT',       // optional
+  withdrawType: 0,    // optional: 0 = on-chain, 1 = off-chain, 2 = all
+  startTime: Date.now() - 30 * 24 * 60 * 60 * 1000,
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+
+withdrawals.result.rows.forEach((record) => {
+  console.log(
+    record.coin,
+    record.amount,
+    record.withdrawStatus,
+    record.txID,
+    record.createTime,
+  );
+});
+```
+
+---
+
+## Coin Information
+
+### `getCoinInfo`
+
+Query coin metadata including supported chains, withdrawal/deposit status, minimum withdrawal amounts, and fees. Authenticated endpoint.
+
+```typescript
+// All coins
+const allCoins = await client.getCoinInfo();
+
+// Specific coin
+const usdtInfo = await client.getCoinInfo('USDT');
+
+usdtInfo.result.rows.forEach((coin) => {
+  console.log(coin.coin, coin.name);
+
+  coin.chains.forEach((chain) => {
+    console.log(
+      chain.chain,
+      chain.chainDeposit,      // '1' = enabled, '0' = disabled
+      chain.chainWithdraw,     // '1' = enabled, '0' = disabled
+      chain.withdrawFee,
+      chain.withdrawMin,
+      chain.minAccuracy,
+    );
+  });
+});
+```

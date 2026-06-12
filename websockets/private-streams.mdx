@@ -1,0 +1,295 @@
+---
+title: "Private WebSocket Streams — Live Account Updates from Bybit"
+sidebarTitle: "Private Streams"
+description: "Subscribe to authenticated Bybit WebSocket streams for live position, order, execution, wallet, and greeks updates using WebsocketClient."
+---
+
+Private WebSocket streams deliver real-time account updates: open positions, order status changes, trade executions, wallet balance movements, and options greeks. All private topics share a single authenticated connection at `wss://stream.bybit.com/v5/private`. You provide your `key` and `secret` in the constructor; authentication is handled automatically before the first private subscription is sent.
+
+## Authentication
+
+Supply credentials in the `WebsocketClient` constructor. The SDK signs and sends an `auth` frame as soon as a private connection is needed — you do not call any auth method manually:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  // testnet: true,       // Use testnet.bybit.com
+  // demoTrading: false,  // Note: demo trading only supports consuming events
+});
+```
+
+You can monitor authentication events using the `authenticated` event:
+
+```typescript
+wsClient.on('authenticated', ({ wsKey }) => {
+  console.log('WebSocket authenticated:', wsKey);
+});
+```
+
+<Note>
+  For private topics, the `category` argument passed to `subscribeV5()` is **ignored** because all private topics share a single endpoint regardless of product category. You can pass any category string (e.g. `'linear'`) as a placeholder — the SDK routes the subscription to `v5Private` automatically.
+</Note>
+
+## Private Topics
+
+### Position Updates — `position`
+
+Pushed when a position is opened, modified, or closed. Each update contains an array of changed position objects.
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+
+wsClient.on('update', (data) => {
+  if (data.topic === 'position') {
+    for (const pos of data.data) {
+      // pos: { symbol, side, size, entryPrice, markPrice, leverage,
+      //        unrealisedPnl, liqPrice, positionIdx, positionStatus, ... }
+      console.log(`Position update: ${pos.symbol} ${pos.side} size=${pos.size}`);
+    }
+  }
+});
+
+wsClient.subscribeV5('position', 'linear');
+```
+
+---
+
+### Order Updates — `order`
+
+Pushed whenever an order changes status: placed, partially filled, fully filled, cancelled, rejected, etc.
+
+```typescript
+wsClient.on('update', (data) => {
+  if (data.topic === 'order') {
+    for (const order of data.data) {
+      // order: { category, symbol, orderId, orderLinkId, side, price, qty,
+      //          orderStatus, cumExecQty, cumExecValue, cumExecFee, ... }
+      console.log(
+        `Order ${order.orderId}: ${order.orderStatus} on ${order.symbol}`,
+      );
+    }
+  }
+});
+
+wsClient.subscribeV5('order', 'linear');
+```
+
+---
+
+### Execution Updates — `execution`
+
+Pushed when a fill occurs. Includes fill price, fill quantity, fees, and PnL for closing trades.
+
+```typescript
+wsClient.on('update', (data) => {
+  if (data.topic === 'execution') {
+    for (const exec of data.data) {
+      // exec: { category, symbol, orderId, side, execPrice, execQty,
+      //         execFee, execType, isMaker, execTime, execPnl, ... }
+      console.log(
+        `Execution: ${exec.symbol} ${exec.side} ${exec.execQty} @ ${exec.execPrice}`,
+      );
+    }
+  }
+});
+
+wsClient.subscribeV5('execution', 'linear');
+```
+
+---
+
+### Fast Execution — `execution.fast`
+
+A low-latency execution stream that delivers a reduced-field subset of execution data. Use this when execution latency matters more than the full detail available on `execution`. Category-specific variants (`execution.fast.linear`, `execution.fast.inverse`, `execution.fast.spot`, `execution.fast.option`) are also supported.
+
+```typescript
+wsClient.on('update', (data) => {
+  if (data.topic === 'execution.fast' || data.topic.startsWith('execution.fast.')) {
+    for (const exec of data.data) {
+      // exec: { category, symbol, execId, execPrice, execQty,
+      //         orderId, isMaker, orderLinkId, side, execTime, seq }
+      console.log(`Fast execution: ${exec.symbol} ${exec.execQty} @ ${exec.execPrice}`);
+    }
+  }
+});
+
+// Subscribe to the combined fast execution stream (all categories)
+wsClient.subscribeV5('execution.fast', 'linear');
+
+// Or subscribe to a category-specific fast stream
+wsClient.subscribeV5('execution.fast.linear', 'linear');
+wsClient.subscribeV5('execution.fast.spot', 'spot');
+wsClient.subscribeV5('execution.fast.inverse', 'inverse');
+wsClient.subscribeV5('execution.fast.option', 'option');
+```
+
+---
+
+### Wallet / Balance Updates — `wallet`
+
+Pushed when the account balance changes. Covers all coins in the Unified Trading Account, including margin rates, available balance, and PnL.
+
+```typescript
+wsClient.on('update', (data) => {
+  if (data.topic === 'wallet') {
+    for (const wallet of data.data) {
+      // wallet: { accountType, totalEquity, totalWalletBalance,
+      //           totalAvailableBalance, coin: [ { coin, walletBalance, ... } ] }
+      console.log(`Wallet update: equity=${wallet.totalEquity}`);
+      for (const coinBalance of wallet.coin) {
+        console.log(`  ${coinBalance.coin}: ${coinBalance.walletBalance}`);
+      }
+    }
+  }
+});
+
+wsClient.subscribeV5('wallet', 'linear');
+```
+
+---
+
+### Options Greeks — `greeks`
+
+Pushed when options greeks change for the account. Only meaningful for accounts holding option positions.
+
+```typescript
+wsClient.on('update', (data) => {
+  if (data.topic === 'greeks') {
+    for (const greek of data.data) {
+      // greek: { baseCoin, totalDelta, totalGamma, totalVega, totalTheta }
+      console.log(
+        `Greeks for ${greek.baseCoin}: delta=${greek.totalDelta} gamma=${greek.totalGamma}`,
+      );
+    }
+  }
+});
+
+// The category value is ignored for private topics — use any valid string
+wsClient.subscribeV5('greeks', 'option');
+```
+
+---
+
+## Using Public and Private Topics on the Same Client
+
+A single `WebsocketClient` instance can hold both public and private subscriptions at the same time. The SDK automatically routes each topic to its correct connection:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+
+wsClient.on('update', (data) => {
+  switch (true) {
+    case data.topic === 'position':
+      console.log('Position:', data.data);
+      break;
+    case data.topic === 'order':
+      console.log('Order:', data.data);
+      break;
+    case data.topic === 'wallet':
+      console.log('Wallet:', data.data);
+      break;
+    case data.topic.startsWith('orderbook'):
+      console.log('Orderbook:', data.topic, data.type);
+      break;
+    case data.topic.startsWith('tickers'):
+      console.log('Ticker:', data.topic, data.data);
+      break;
+  }
+});
+
+wsClient.on('open', ({ wsKey }) => console.log('Connected:', wsKey));
+wsClient.on('authenticated', ({ wsKey }) => console.log('Authenticated:', wsKey));
+wsClient.on('exception', (err) => console.error('Exception:', err));
+wsClient.on('reconnect', ({ wsKey }) => console.log('Reconnecting:', wsKey));
+wsClient.on('reconnected', ({ wsKey }) => console.log('Reconnected:', wsKey));
+
+// Public topics — routed to v5LinearPublic, v5SpotPublic, etc.
+wsClient.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+wsClient.subscribeV5('tickers.BTCUSDT', 'spot');
+
+// Private topics — all routed to v5Private, authenticated automatically
+wsClient.subscribeV5('position', 'linear');
+wsClient.subscribeV5(['order', 'wallet', 'greeks'], 'linear');
+wsClient.subscribeV5('execution', 'linear');
+```
+
+## Full Private Stream Example
+
+```typescript
+import { DefaultLogger, WebsocketClient, WS_KEY_MAP } from 'bybit-api';
+
+const logger = {
+  ...DefaultLogger,
+  // Uncomment for detailed trace logs:
+  // trace: (...params: any[]) => console.log('trace', ...params),
+};
+
+const wsClient = new WebsocketClient(
+  {
+    key: process.env.API_KEY,
+    secret: process.env.API_SECRET,
+  },
+  logger,
+);
+
+wsClient.on('update', (data) => {
+  console.log('Update received:', JSON.stringify(data));
+});
+
+wsClient.on('open', ({ wsKey }) => {
+  console.log('Connection opened:', wsKey);
+});
+
+wsClient.on('response', (data) => {
+  console.log('Response:', JSON.stringify(data, null, 2));
+});
+
+wsClient.on('authenticated', ({ wsKey }) => {
+  console.log('Authenticated:', wsKey);
+});
+
+wsClient.on('reconnect', ({ wsKey }) => {
+  console.log('Reconnecting:', wsKey);
+});
+
+wsClient.on('reconnected', ({ wsKey }) => {
+  console.log('Reconnected:', wsKey);
+});
+
+// Subscribe to all private topics
+wsClient.subscribeV5('position', 'linear');
+wsClient.subscribeV5(['order', 'wallet', 'greeks'], 'linear');
+wsClient.subscribeV5('execution', 'linear');
+
+// Inspect active topics after a short delay
+setTimeout(() => {
+  const activePrivateTopics = wsClient
+    .getWsStore()
+    .getTopics(WS_KEY_MAP.v5Private);
+  console.log('Active private topics:', activePrivateTopics);
+}, 5_000);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Public Streams" icon="chart-line" href="/websockets/public-streams">
+    Subscribe to orderbook, kline, ticker, trade, and liquidation streams without authentication.
+  </Card>
+  <Card title="WebSocket API" icon="bolt" href="/websockets/websocket-api">
+    Submit, amend, and cancel orders over WebSocket using a promise-based interface.
+  </Card>
+</CardGroup>

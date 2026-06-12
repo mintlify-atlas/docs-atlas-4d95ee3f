@@ -1,0 +1,421 @@
+---
+title: "WebSocket API — Submit Orders Over WebSocket on Bybit"
+sidebarTitle: "WebSocket API"
+description: "Use WebsocketAPIClient to submit, amend, and cancel orders over WebSocket with a promise-based interface identical to the REST API."
+---
+
+Bybit's WebSocket API lets you create, amend, and cancel orders over a persistent WebSocket connection instead of HTTP. Because the connection is already established, round-trip latency is significantly lower than a REST call — there is no TCP handshake, TLS negotiation, or HTTP overhead per request. The `bybit-api` SDK implements this with two approaches: the high-level `WebsocketAPIClient` (recommended) and the lower-level `sendWSAPIRequest` method on `WebsocketClient`.
+
+## Why WebSocket API?
+
+- **Lower latency** than REST: no per-request connection setup.
+- **Same parameters** as the corresponding REST endpoints — existing REST code can often be adapted with minimal changes.
+- **Automatic auth**: credentials are signed and sent once when the connection opens, then reused for every subsequent request.
+- **Promise-driven**: each `sendWSAPIRequest` call returns a Promise that resolves when the matching response arrives, making error handling natural with `try/catch`.
+
+<Warning>
+  As of January 2025, Bybit's demo trading environment does **not** support the WebSocket API. Use `testnet: true` or a real account. Do not set `demoTrading: true` when using WS API operations.
+</Warning>
+
+---
+
+## Approach 1: WebsocketAPIClient (Recommended)
+
+`WebsocketAPIClient` wraps `WebsocketClient` and exposes dedicated, fully-typed methods for every supported WS API operation. Each method returns a Promise — use `await` just as you would with a REST client.
+
+### Installation and Import
+
+```typescript
+import { WebsocketAPIClient } from 'bybit-api';
+// CommonJS:
+// const { WebsocketAPIClient } = require('bybit-api');
+```
+
+### Instantiation
+
+```typescript
+import { DefaultLogger, WebsocketAPIClient } from 'bybit-api';
+
+const wsClient = new WebsocketAPIClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  // testnet: true,  // Use testnet.bybit.com
+  // attachEventListeners: true,  // Default: true — logs open/reconnect/exception to console
+});
+```
+
+<ParamField path="attachEventListeners" type="boolean" default="true">
+  When `true`, the client attaches default `console.log` handlers for `open`, `reconnect`, `reconnected`, `authenticated`, and `exception` events. Disable this if you want to attach your own handlers via `wsClient.getWSClient().on(...)`.
+</ParamField>
+
+### Submitting a New Order
+
+```typescript
+try {
+  const response = await wsClient.submitNewOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    orderType: 'Limit',
+    side: 'Buy',
+    qty: '0.001',
+    price: '50000',
+  });
+
+  console.log('Order created:', response.data.orderId);
+  // response type: WSAPIResponse<OrderResultV5, 'order.create'>
+} catch (e) {
+  console.error('Order submit failed:', e);
+}
+```
+
+### Amending an Order
+
+```typescript
+try {
+  const response = await wsClient.amendOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    orderId: 'b4b9e205-793c-4777-8112-0bf3c2d26b6e',
+    qty: '0.001',
+    price: '55000',
+  });
+
+  console.log('Order amended:', response.data.orderId);
+  // response type: WSAPIResponse<OrderResultV5, 'order.amend'>
+} catch (e) {
+  console.error('Amend failed:', e);
+}
+```
+
+### Cancelling an Order
+
+```typescript
+try {
+  const response = await wsClient.cancelOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    orderId: 'b4b9e205-793c-4777-8112-0bf3c2d26b6e',
+  });
+
+  console.log('Order cancelled:', response.data.orderId);
+  // response type: WSAPIResponse<OrderResultV5, 'order.cancel'>
+} catch (e) {
+  console.error('Cancel failed:', e);
+}
+```
+
+### Batch Operations
+
+Batch endpoints are available for `linear` and `option` categories. Each batch call takes the category and an array of order parameter objects.
+
+```typescript
+// Batch submit
+try {
+  const response = await wsClient.batchSubmitOrders('linear', [
+    { symbol: 'BTCUSDT', orderType: 'Limit', qty: '0.001', side: 'Buy', price: '50000' },
+    { symbol: 'BTCUSDT', orderType: 'Limit', qty: '0.001', side: 'Buy', price: '51000' },
+    { symbol: 'BTCUSDT', orderType: 'Limit', qty: '0.001', side: 'Buy', price: '52000' },
+  ]);
+  console.log('Batch submit result:', response.data.list);
+  // response type: WSAPIResponse<{ list: BatchCreateOrderResultV5[] }, 'order.create-batch', BatchOrdersRetExtInfoV5>
+} catch (e) {
+  console.error('Batch submit failed:', e);
+}
+
+// Batch amend
+try {
+  const response = await wsClient.batchAmendOrder('linear', [
+    { symbol: 'BTCUSDT', orderId: '2473ee58', price: '80000' },
+    { symbol: 'BTCUSDT', orderId: 'b4b9e205-793c-4777-8112-0bf3c2d26b6e', price: '81000' },
+  ]);
+  console.log('Batch amend result:', response.data.list);
+  // response type: WSAPIResponse<{ list: BatchAmendOrderResultV5[] }, 'order.amend-batch', BatchOrdersRetExtInfoV5>
+} catch (e) {
+  console.error('Batch amend failed:', e);
+}
+
+// Batch cancel
+try {
+  const response = await wsClient.batchCancelOrder('linear', [
+    { symbol: 'BTCUSDT', orderId: '2473ee58' },
+    { symbol: 'BTCUSDT', orderId: 'b4b9e205-793c-4777-8112-0bf3c2d26b6e' },
+  ]);
+  console.log('Batch cancel result:', response.data.list);
+  // response type: WSAPIResponse<{ list: BatchCancelOrderResultV5[] }, 'order.cancel-batch', BatchOrdersRetExtInfoV5>
+} catch (e) {
+  console.error('Batch cancel failed:', e);
+}
+```
+
+### Accessing the Underlying WebsocketClient
+
+If you need to attach custom event handlers or access store information, retrieve the inner client via `getWSClient()`:
+
+```typescript
+const innerWsClient = wsClient.getWSClient();
+
+innerWsClient.on('open', ({ wsKey }) => console.log('WS opened:', wsKey));
+innerWsClient.on('exception', (err) => console.error('WS error:', err));
+innerWsClient.on('reconnect', ({ wsKey }) => console.log('Reconnecting:', wsKey));
+```
+
+### Pre-connecting
+
+Normally the connection opens automatically when you make your first WS API request. To eliminate cold-start latency on the first call, connect in advance:
+
+```typescript
+// Ensure the WS API connection is open and authenticated before the first request
+await wsClient.getWSClient().connectWSAPI();
+
+// Now the first request executes immediately
+const response = await wsClient.submitNewOrder({ ... });
+```
+
+### Full WebsocketAPIClient Example
+
+```typescript
+import { DefaultLogger, WebsocketAPIClient } from 'bybit-api';
+
+async function main() {
+  const logger = {
+    ...DefaultLogger,
+    // trace: (...params: any[]) => console.log('trace', ...params),
+  };
+
+  const wsClient = new WebsocketAPIClient(
+    {
+      key: process.env.API_KEY,
+      secret: process.env.API_SECRET,
+    },
+    logger,
+  );
+
+  // Optional: warm up the connection before sending orders
+  // await wsClient.getWSClient().connectWSAPI();
+
+  // Step 1: Create an order
+  let orderId: string | undefined;
+  try {
+    const result = await wsClient.submitNewOrder({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      orderType: 'Limit',
+      side: 'Buy',
+      qty: '0.001',
+      price: '50000',
+    });
+    orderId = result.data.orderId;
+    console.log('Created order:', orderId);
+  } catch (e) {
+    console.error('Create order error:', e);
+    return;
+  }
+
+  // Step 2: Amend the order
+  try {
+    const result = await wsClient.amendOrder({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      orderId,
+      price: '55000',
+    });
+    console.log('Amended order:', result.data.orderId);
+  } catch (e) {
+    console.error('Amend order error:', e);
+    return;
+  }
+
+  // Step 3: Cancel the order
+  try {
+    const result = await wsClient.cancelOrder({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      orderId,
+    });
+    console.log('Cancelled order:', result.data.orderId);
+  } catch (e) {
+    console.error('Cancel order error:', e);
+  }
+}
+
+main();
+```
+
+---
+
+## Approach 2: sendWSAPIRequest (Advanced)
+
+For direct access to the underlying WS API transport, use `sendWSAPIRequest` on `WebsocketClient`. This provides the same Promise-based interface but requires you to construct the `wsKey` and `operation` arguments explicitly. It is useful if you want finer control over events or prefer not to use `WebsocketAPIClient`.
+
+### Supported Operations
+
+| Operation | Description |
+|---|---|
+| `order.create` | Submit a new order |
+| `order.amend` | Amend an existing order |
+| `order.cancel` | Cancel an existing order |
+| `order.create-batch` | Batch submit up to 20 orders |
+| `order.amend-batch` | Batch amend multiple orders |
+| `order.cancel-batch` | Batch cancel multiple orders |
+
+All requests are sent over the `v5PrivateTrade` connection (`WS_KEY_MAP.v5PrivateTrade`).
+
+### Promise-Driven Usage
+
+```typescript
+import { DefaultLogger, WebsocketClient, WS_KEY_MAP } from 'bybit-api';
+
+const wsClient = new WebsocketClient(
+  {
+    key: process.env.API_KEY,
+    secret: process.env.API_SECRET,
+  },
+  { ...DefaultLogger },
+);
+
+// Optional: lifecycle events
+wsClient.on('open', ({ wsKey }) => console.log('Connected:', wsKey));
+wsClient.on('authenticated', ({ wsKey }) => console.log('Authenticated:', wsKey));
+wsClient.on('reconnect', ({ wsKey }) => console.log('Reconnecting:', wsKey));
+wsClient.on('reconnected', ({ wsKey }) => console.log('Reconnected:', wsKey));
+wsClient.on('exception', (err) => console.error('Exception:', err));
+
+async function main() {
+  // Warm up the connection in advance (optional)
+  await wsClient.connectWSAPI();
+
+  // Create an order and await the response promise
+  try {
+    const result = await wsClient.sendWSAPIRequest(
+      WS_KEY_MAP.v5PrivateTrade,
+      'order.create',
+      {
+        symbol: 'BTCUSDT',
+        side: 'Buy',
+        orderType: 'Limit',
+        price: '50000',
+        qty: '1',
+        category: 'linear',
+      },
+    );
+    // result type is automatically resolved to WSAPIResponse<OrderResultV5, 'order.create'>
+    console.log('Created order:', result.data.orderId);
+  } catch (e) {
+    console.error('Create order failed:', e);
+  }
+}
+
+main();
+```
+
+### Event-Driven (Fire-and-Forget) Usage
+
+Instead of awaiting each call, you can fire requests without blocking and handle all responses and exceptions in the shared event listeners. This is the most raw form of the WS API.
+
+```typescript
+import { DefaultLogger, WebsocketClient, WS_KEY_MAP } from 'bybit-api';
+
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+
+// All command responses arrive here
+wsClient.on('response', (data) => {
+  console.log('Command response:', JSON.stringify(data, null, 2));
+});
+
+// All errors and rejected commands arrive here
+wsClient.on('exception', (data) => {
+  console.error('Command exception:', data);
+});
+
+async function main() {
+  await wsClient.connectWSAPI();
+
+  // Fire-and-forget — result arrives on the 'response' event
+  // Always attach a .catch() to prevent unhandled promise rejection warnings
+  wsClient
+    .sendWSAPIRequest(WS_KEY_MAP.v5PrivateTrade, 'order.create', {
+      symbol: 'BTCUSDT',
+      side: 'Buy',
+      orderType: 'Limit',
+      price: '50000',
+      qty: '1',
+      category: 'linear',
+    })
+    .catch((e) => console.error('Create order exception:', e));
+
+  // Amend the order a few seconds later
+  setTimeout(() => {
+    wsClient
+      .sendWSAPIRequest(WS_KEY_MAP.v5PrivateTrade, 'order.amend', {
+        symbol: 'BTCUSDT',
+        category: 'linear',
+        orderId: '1234567',
+        price: '55000',
+      })
+      .catch((e) => console.error('Amend exception:', e));
+  }, 3_000);
+
+  // Cancel the order
+  setTimeout(() => {
+    wsClient
+      .sendWSAPIRequest(WS_KEY_MAP.v5PrivateTrade, 'order.cancel', {
+        category: 'linear',
+        symbol: 'BTCUSDT',
+        orderId: '1234567',
+      })
+      .catch((e) => console.error('Cancel exception:', e));
+  }, 6_000);
+}
+
+main();
+```
+
+<Tip>
+  Even in fire-and-forget mode, always chain `.catch()` on each `sendWSAPIRequest` call. Without it, a rejected promise (e.g. from a disconnection) will throw an unhandled rejection warning in Node.js.
+</Tip>
+
+---
+
+## Approach Comparison
+
+<CardGroup cols={2}>
+  <Card title="WebsocketAPIClient" icon="star">
+    **Recommended for most users.** Dedicated methods per operation, fully typed request and response parameters, default event listeners included. Internally wraps `sendWSAPIRequest`.
+  </Card>
+  <Card title="sendWSAPIRequest" icon="code">
+    **For advanced use cases.** Direct access to the transport layer. Useful when you want to handle events manually or mix WS API calls with subscription management on the same `WebsocketClient` instance.
+  </Card>
+</CardGroup>
+
+---
+
+## TypeScript Types
+
+The SDK provides full TypeScript coverage for WS API requests and responses:
+
+| Type | Description |
+|---|---|
+| `WSAPIOperation` | Union of all supported operation strings |
+| `WsAPITopicRequestParamMap` | Maps each operation to its request parameter interface |
+| `WsAPIOperationResponseMap` | Maps each operation to its response type |
+| `WSAPIResponse<TData, TOperation>` | Generic response envelope with `retCode`, `retMsg`, `data`, and `header` |
+| `OrderParamsV5` | Request parameters for `order.create` |
+| `AmendOrderParamsV5` | Request parameters for `order.amend` |
+| `CancelOrderParamsV5` | Request parameters for `order.cancel` |
+| `BatchOrderParamsV5` | Request parameters for items in `order.create-batch` |
+
+TypeScript will automatically infer the correct parameter and return types from the operation string — passing incorrect request fields produces a compile-time error.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="house" href="/websockets/overview">
+    Review the WebSocket connection model, WS keys, configuration options, and event system.
+  </Card>
+  <Card title="Private Streams" icon="lock" href="/websockets/private-streams">
+    Subscribe to live position, order, execution, and wallet updates alongside WS API usage.
+  </Card>
+</CardGroup>

@@ -1,0 +1,106 @@
+---
+title: "bybit-api: Complete Node.js SDK for Bybit Trading APIs"
+sidebarTitle: "Introduction"
+description: "bybit-api is a complete Node.js/TypeScript SDK for Bybit REST APIs, WebSocket streams, and WebSocket API — with automatic authentication and 400 req/s rate limits."
+---
+
+`bybit-api` is a professional Node.js, JavaScript, and TypeScript SDK for Bybit's trading platform. It provides complete coverage of Bybit's V5 REST APIs, public and private WebSocket streams, and the WebSocket API — all through a single npm package with a modern, promise-driven interface.
+
+## What bybit-api covers
+
+The SDK wraps every surface of the Bybit API that a trading integration needs:
+
+- **All V5 REST endpoints** — market data, account management, order placement, positions, wallet, asset transfers, Earn, Broker, P2P, RFQ, spread trading, and more.
+- **Public WebSocket streams** — real-time order books, trades, klines, tickers, funding rates, and liquidations across Spot, Linear, Inverse, and Options markets.
+- **Private WebSocket streams** — live account events including orders, executions, positions, wallet changes, and greeks.
+- **WebSocket API** — submit, amend, and cancel orders over a persistent WebSocket connection, either with promise-driven methods or event-driven callbacks.
+
+## Client classes
+
+The SDK ships three main client classes. For new integrations, start with `RestClientV5` for REST calls and `WebsocketClient` for streaming.
+
+| Class | Description |
+|---|---|
+| `RestClientV5` | Unified V5 all-in-one REST client. Covers every V5 REST endpoint including market data, trading, account, asset, and specialty APIs. |
+| `WebsocketClient` | Manages all WebSocket connectivity — public market streams, private account streams, and raw WebSocket API commands via `sendWSAPIRequest(...)`. |
+| `WebsocketAPIClient` | Promise-driven wrapper over `WebsocketClient` for the WebSocket API. Call methods like `submitNewOrder(...)` and `await` responses, similar to a REST API. |
+
+## Key benefits
+
+<Note>
+  All API requests made with this SDK are automatically subject to significantly higher rate limits — **400 requests per second**, which is higher than the highest Bybit VIP tier. This is automatic for every API call, for every user, with no additional configuration required. Additionally, this SDK enables a lower minimum order notional value of $1 (versus the standard $5 minimum).
+</Note>
+
+- **TypeScript-first** — thorough type declarations for request parameters and API responses across REST and WebSocket APIs, including the WebSocket API.
+- **Automatic HMAC & RSA authentication** — pass your credentials once; the SDK signs every private request. RSA keys are auto-detected when the secret contains a PEM header.
+- **Smart WebSocket persistence** — automatic heartbeat monitoring, silent-disconnect detection, reconnection, and topic resubscription without any manual handling.
+- **Multi-environment support** — live, testnet, demo trading, and nine regional API domains (`EU`, `NL`, `TK`, `KZ`, `HK`, `GE`, `UAE`, `bytick`, `default`) are all configurable.
+- **Proxy support** — pass standard axios options for proxy and custom HTTP agent configuration.
+- **JavaScript compatible** — TypeScript is not required. The published npm package is a compiled JavaScript module with bundled type declarations.
+
+## Installation
+
+Install `bybit-api` from npm using your preferred package manager:
+
+```bash
+npm install bybit-api
+```
+
+## Minimal example
+
+The following snippet shows the complete setup for making both public and private REST API calls. No extra configuration is needed beyond providing your API credentials.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+// Public client — no credentials needed for market data
+const publicClient = new RestClientV5();
+
+publicClient
+  .getOrderbook({ category: 'linear', symbol: 'BTCUSDT' })
+  .then((result) => {
+    console.log('Orderbook:', result);
+  });
+
+// Authenticated client — credentials auto-sign every private request
+const privateClient = new RestClientV5({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+});
+
+privateClient
+  .getAccountInfo()
+  .then((result) => {
+    console.log('Account info:', result);
+  })
+  .catch((err) => {
+    console.error('Error:', err);
+  });
+```
+
+## Explore the documentation
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Install the SDK, set up API keys, and make your first REST and WebSocket calls in under five minutes.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Configure HMAC or RSA authentication and learn how the SDK auto-signs every private request.
+  </Card>
+  <Card title="REST API" icon="server" href="/rest/overview">
+    Full reference for all RestClientV5 methods — market data, orders, positions, wallet, and more.
+  </Card>
+  <Card title="WebSockets" icon="wifi" href="/websockets/overview">
+    Subscribe to real-time streams and send WebSocket API commands with automatic reconnection.
+  </Card>
+</CardGroup>
+
+## Related projects & community
+
+- **npm package**: [`bybit-api`](https://www.npmjs.com/package/bybit-api)
+- **GitHub repository**: [`tiagosiebler/bybit-api`](https://github.com/tiagosiebler/bybit-api)
+- **TSDoc reference**: [tsdocs.dev/docs/bybit-api](https://tsdocs.dev/docs/bybit-api)
+- **Endpoint function map**: [docs/endpointFunctionList.md](https://github.com/tiagosiebler/bybit-api/blob/master/docs/endpointFunctionList.md)
+- **Bybit API documentation**: [bybit-exchange.github.io/docs/v5/intro](https://bybit-exchange.github.io/docs/v5/intro)
+- **Community Telegram**: [Node.js Algo Traders](https://t.me/nodetraders)
+- **Siebly.io ecosystem**: Other exchange SDKs for Kraken, OKX, Binance, Gate, Bitget, Kucoin, Coinbase, and Bitmart are available at [siebly.io](https://siebly.io/)

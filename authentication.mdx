@@ -1,0 +1,245 @@
+---
+title: "Authenticate with bybit-api Using HMAC or RSA Keys"
+sidebarTitle: "Authentication"
+description: "Configure HMAC or RSA API key authentication for bybit-api. The SDK auto-detects key type and signs every private request automatically."
+---
+
+`bybit-api` handles all authentication automatically. Pass your API key and secret to the client constructor once, and every subsequent private request is signed with the correct algorithm, timestamp, and headers — no manual signing, no raw header management. The SDK supports both HMAC-SHA256 and RSA-SHA256 authentication and detects which algorithm to use based on the shape of the `secret` value you provide.
+
+## How authentication works
+
+For every private REST API request, the SDK:
+
+1. Takes the current timestamp (in milliseconds).
+2. Serialises the request parameters into a canonical string.
+3. Signs the string using HMAC-SHA256 (for standard API secrets) or RSA-SHA256 (for PEM private keys).
+4. Attaches the required `X-BAPI-API-KEY`, `X-BAPI-SIGN`, `X-BAPI-SIGN-TYPE`, and `X-BAPI-TIMESTAMP` headers automatically.
+
+For private WebSocket connections, the SDK authenticates the connection itself after it opens, then manages reauthentication transparently after any reconnect.
+
+**HMAC vs RSA detection**: The SDK checks whether the `secret` string contains the substring `PRIVATE KEY`. If it does, RSA-SHA256 with base64 encoding is used. Otherwise, HMAC-SHA256 with hex encoding is used. No extra configuration flag is required.
+
+## Creating API keys
+
+Create credentials from the Bybit API Management page for the environment you are targeting:
+
+- **Live environment**: [bybit.com — API Management](https://bybit.com/app/user/api-management?affiliate_id=9410&language=en-US&group_id=0&group_type=1)
+- **Testnet environment**: [testnet.bybit.com — API Management](https://testnet.bybit.com/app/user/api-management)
+- **Demo trading notes**: [Bybit Demo Trading Service](https://bybit-exchange.github.io/docs/v5/demo)
+
+<Warning>
+  Live, testnet, and demo trading credentials are completely separate. Never mix them. Keep each credential set in its own named secret in your secrets manager or environment configuration.
+</Warning>
+
+## HMAC authentication
+
+HMAC is the standard Bybit API key type. Bybit generates a key string and a secret string for you. Pass both directly to the client constructor:
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+});
+
+// Every private call is signed automatically
+const accountInfo = await client.getAccountInfo();
+console.log(accountInfo.result);
+```
+
+The same credentials work identically for `WebsocketClient` and `WebsocketAPIClient`:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+});
+
+ws.on('authenticated', ({ wsKey }) => console.log('Authenticated:', wsKey));
+ws.subscribeV5(['order', 'execution', 'wallet'], 'linear');
+```
+
+## RSA authentication
+
+Bybit supports self-generated RSA key pairs. You provide Bybit with your **public** key when creating the API key; Bybit returns a standard-looking API key string. You then pass that key string as `key` and your **private** PEM key as `secret`.
+
+### Generating an RSA key pair
+
+Use `openssl` to generate a 4096-bit private key and the matching public key:
+
+```bash
+# Generate a private key (4096-bit recommended)
+openssl genrsa -out rsa-private-key.pem 4096
+
+# Derive the public key from it
+openssl rsa -in rsa-private-key.pem -pubout -out rsa-public-key.pem
+```
+
+Upload the contents of `rsa-public-key.pem` to Bybit when creating the API key using the "Self-generated" option. Bybit will provide you with an API key string. Keep your private key completely secret — never share it, never commit it to source control.
+
+### Configuring the RSA client
+
+Pass the Bybit-provided API key as `key` and the full PEM private key (including the `-----BEGIN PRIVATE KEY-----` header and `-----END PRIVATE KEY-----` footer) as `secret`. The SDK detects the PEM header and switches to RSA-SHA256 signing automatically:
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+// The API key string provided by Bybit after uploading your public key
+const apiKey = process.env.BYBIT_API_KEY;
+
+// Your RSA private key — must include the full PEM header and footer
+const rsaPrivateKey = process.env.BYBIT_RSA_PRIVATE_KEY;
+// e.g.:
+// -----BEGIN PRIVATE KEY-----
+// MIIEvQIBADANBgkqhkiG9w0BAQEFAASC...
+// -----END PRIVATE KEY-----
+
+const client = new RestClientV5({
+  key: apiKey,
+  secret: rsaPrivateKey,
+  // testnet: true, // use testnet RSA keys on testnet
+});
+
+// Private calls are now signed with RSA-SHA256
+const accountInfo = await client.getAccountInfo();
+console.log(accountInfo.result);
+```
+
+<Note>
+  RSA detection is automatic. The SDK looks for the substring `PRIVATE KEY` anywhere in the `secret` value. If found, RSA-SHA256 with base64 encoding is used. For plain HMAC secrets — which never contain those words — HMAC-SHA256 with hex encoding is used.
+</Note>
+
+## Environment variable best practices
+
+Store credentials in environment variables, not in source files. For local development, use a `.env` file (added to `.gitignore`) and a package such as [`dotenv`](https://www.npmjs.com/package/dotenv):
+
+```bash
+# .env — never commit this file
+BYBIT_API_KEY=your-api-key-here
+BYBIT_API_SECRET=your-hmac-secret-or-rsa-private-key
+```
+
+For RSA private keys stored in environment variables, the multi-line PEM value can be stored as a single line with literal `\n` characters, then restored at runtime:
+
+```typescript
+import 'dotenv/config';
+import { RestClientV5 } from 'bybit-api';
+
+// If the PEM key is stored with literal \n in the env var, restore newlines:
+const rsaKey = (process.env.BYBIT_RSA_PRIVATE_KEY ?? '').replace(/\\n/g, '\n');
+
+const client = new RestClientV5({
+  key: process.env.BYBIT_API_KEY,
+  secret: rsaKey,
+});
+```
+
+In production, use your platform's native secrets manager (AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault, etc.) rather than `.env` files.
+
+## Constructor options reference
+
+The following `RestClientOptions` fields are relevant to authentication and environment configuration. Pass them as the first argument to `RestClientV5`, `WebsocketClient`, or `WebsocketAPIClient`.
+
+<ParamField path="key" type="string">
+  Your Bybit API key. Required for all private endpoints. For HMAC authentication this is the key string generated by Bybit. For RSA authentication this is the key string Bybit provides after you upload your public key.
+</ParamField>
+
+<ParamField path="secret" type="string">
+  Your API secret. For HMAC authentication, this is the secret string generated by Bybit. For RSA authentication, this is your full PEM private key including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines. The SDK detects RSA keys automatically from the PEM header.
+</ParamField>
+
+<ParamField path="testnet" type="boolean" default="false">
+  Set to `true` to connect to Bybit's testnet environment. Testnet uses separate API domains and separate credentials. Do not combine with `demoTrading: true`.
+</ParamField>
+
+<ParamField path="demoTrading" type="boolean" default="false">
+  Set to `true` to connect to Bybit's V5 demo trading environment. Demo trading uses mainnet domains with a simulated account and separate demo API keys. Do not combine with `testnet: true`. Note: as of January 2025, the WebSocket API is not supported in demo trading.
+</ParamField>
+
+<ParamField path="recv_window" type="number" default="5000">
+  The maximum allowed age (in milliseconds) of a request timestamp, as enforced by Bybit. Requests whose timestamp differs from Bybit's server clock by more than this value are rejected. The default of `5000` (5 seconds) is sufficient for most environments. Increase this value only if you experience consistent clock-drift rejection errors, and fix your system clock sync first.
+</ParamField>
+
+## Required API permissions by use case
+
+Grant the minimum permissions your integration needs. Do not enable permissions that your code does not use.
+
+| Use case | Required permissions |
+|---|---|
+| Public market data only | None — no API key required |
+| Account reads (balances, positions, orders) | Read-only |
+| Order management (submit, amend, cancel) | Trade |
+| Spot margin trading | Trade + Spot Margin Trade |
+| Asset transfers between sub-accounts | Transfer |
+| Withdrawals | Withdraw — only add this if absolutely necessary |
+
+<Warning>
+  Never grant withdrawal permissions to a key used by a trading service. Keep withdrawal-capable keys on a separate, tightly restricted key with IP whitelisting enabled.
+</Warning>
+
+## IP whitelisting
+
+Bybit allows you to restrict an API key so it only accepts requests from specific IP addresses. This is one of the most effective mitigations against credential theft. Enable IP whitelisting for every production key where your deployment environment has a fixed egress IP.
+
+Configure IP restrictions in the Bybit API Management dashboard when creating or editing an API key.
+
+## RecvWindow configuration
+
+The `recv_window` option (for REST) and `recvWindow` option (for WebSockets) control how much clock drift Bybit will tolerate on signed requests. The defaults are almost always sufficient. If you encounter `10002` (recv window exceeded) errors, check your system clock synchronisation before increasing the window.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+  // Increase only if you experience clock-drift rejection errors
+  recv_window: 10000, // 10 seconds
+});
+```
+
+For WebSocket authentication on high-latency connections (such as through a VPN), increase `recvWindow` on the WebSocket client:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+  recvWindow: 10000,
+});
+```
+
+## Debugging requests with BYBITTRACE
+
+In development, you can enable verbose HTTP response logging by setting the `BYBITTRACE` environment variable to `true`. When enabled, the SDK logs the full request URL, method, headers, parameters, and Bybit's response for every API call.
+
+```bash
+BYBITTRACE=true npx ts-node my-script.ts
+```
+
+<Warning>
+  Never enable `BYBITTRACE` in production. The logged output includes your API key, request signatures, and full response payloads, which may contain sensitive account data.
+</Warning>
+
+The flag is read once at startup from `process.env.BYBITTRACE`. There is no runtime toggle; restart your process with or without the variable to enable or disable tracing.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Step-by-step guide to making your first REST and WebSocket calls.
+  </Card>
+  <Card title="REST API" icon="server" href="/rest/overview">
+    Full reference for all RestClientV5 endpoints and methods.
+  </Card>
+  <Card title="WebSockets" icon="wifi" href="/websockets/overview">
+    Subscribe to market and account streams with automatic reconnection.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Advanced options: regional domains, rate-limit parsing, keep-alive, and custom signing.
+  </Card>
+</CardGroup>

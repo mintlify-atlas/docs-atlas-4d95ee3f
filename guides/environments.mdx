@@ -1,0 +1,218 @@
+---
+title: "Use Testnet, Demo Trading, and Regional Bybit Domains"
+sidebarTitle: "Environments"
+description: "Switch between Bybit live, testnet, and demo trading environments, and route API calls to regional domains like Bybit EU, Turkey, or Kazakhstan."
+---
+
+The `bybit-api` SDK supports three distinct trading environments — live, testnet, and demo trading — as well as a set of regional domain options for users subject to local regulatory requirements or who want lower-latency routing. Switching between them is a single constructor option change; no other code modifications are required.
+
+## Overview of Environments
+
+| Environment | Config Option | Base URL | Credentials |
+|---|---|---|---|
+| Live (default) | _(none)_ | `api.bybit.com` | Live API key & secret |
+| Testnet | `testnet: true` | `api-testnet.bybit.com` | Separate testnet credentials |
+| Demo Trading | `demoTrading: true` | `api.bybit.com` (demo header) | Live API key & secret |
+
+<Note>
+  Testnet and demo trading serve different purposes. **Testnet** has entirely different market data that does not reflect real conditions. **Demo trading** uses live market prices and order books — it is the recommended environment for strategy testing and simulation.
+</Note>
+
+---
+
+## Live Environment
+
+The live environment is the default. No additional configuration is required beyond providing your API credentials.
+
+```typescript
+import { RestClientV5, WebsocketClient } from 'bybit-api';
+
+const restClient = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+---
+
+## Testnet
+
+Set `testnet: true` to direct all requests to Bybit's testnet environment. Testnet credentials are entirely separate from live credentials and must be created at [testnet.bybit.com](https://testnet.bybit.com/app/user/api-management).
+
+<Warning>
+  Do not use `testnet: true` together with `demoTrading: true`. If demo trading is intended, `testnet` must remain `false`.
+</Warning>
+
+```typescript
+import { RestClientV5, WebsocketClient } from 'bybit-api';
+
+const restClient = new RestClientV5({
+  key: process.env.TESTNET_API_KEY,
+  secret: process.env.TESTNET_API_SECRET,
+  testnet: true,
+});
+
+const wsClient = new WebsocketClient({
+  key: process.env.TESTNET_API_KEY,
+  secret: process.env.TESTNET_API_SECRET,
+  testnet: true,
+});
+```
+
+<Note>
+  Testnet market data, order books, and liquidity are synthetic and unrelated to live conditions. If you are testing a trading strategy, use **demo trading** instead — it reflects real prices and real market microstructure.
+</Note>
+
+---
+
+## Demo Trading
+
+Demo trading uses your **live** API credentials but routes requests to Bybit's demo environment, where all P&L is simulated. This is the recommended environment for strategy validation before going live.
+
+```typescript
+import { RestClientV5, WebsocketClient } from 'bybit-api';
+
+const restClient = new RestClientV5({
+  key: process.env.API_KEY,      // live credentials
+  secret: process.env.API_SECRET,
+  demoTrading: true,
+});
+
+const wsClient = new WebsocketClient({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  demoTrading: true,
+});
+```
+
+You can request demo funds and inspect balances through the REST client:
+
+```typescript
+// Request demo funds to start trading
+const demoFunds = await restClient.requestDemoTradingFunds();
+console.log('Demo funds credited:', demoFunds);
+
+const balance = await restClient.getWalletBalance({ accountType: 'UNIFIED' });
+console.log('Balance:', JSON.stringify(balance, null, 2));
+```
+
+<Note>
+  WebSocket API (order placement via WebSocket) is not supported in demo trading as of January 2025. Use the REST client for order placement in demo mode, and use the `WebsocketClient` only for market data and account event streams.
+</Note>
+
+### Full Demo Trading Example
+
+The following shows REST and WebSocket working together in demo mode, including subscribing to private account topics:
+
+```typescript
+import { RestClientV5, WebsocketClient } from 'bybit-api';
+
+const key = process.env.API_KEY;
+const secret = process.env.API_SECRET;
+
+const restClient = new RestClientV5({ key, secret, demoTrading: true });
+
+const wsClient = new WebsocketClient({ key, secret, demoTrading: true });
+
+wsClient.on('update', (data) => {
+  console.log('Account update:', JSON.stringify(data, null, 2));
+});
+
+wsClient.on('exception', (err) => {
+  console.error('WS exception:', err);
+});
+
+// Subscribe to private account topics
+wsClient.subscribeV5(['position', 'execution', 'wallet'], 'linear');
+
+// Place a demo market order
+const order = await restClient.submitOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderType: 'Market',
+  qty: '1',
+  side: 'Buy',
+});
+console.log('Demo order result:', order);
+```
+
+---
+
+## Regional Domains
+
+Bybit operates regional domains for users in specific countries or regulatory jurisdictions. Use the `apiRegion` option on `RestClientV5` to route REST API calls to the appropriate domain. All regional domains serve the same V5 API.
+
+<Note>
+  The `apiRegion` option applies to `RestClientV5` only. For `WebsocketClient`, use the `wsUrl` option to override the WebSocket endpoint when a regional endpoint is required.
+</Note>
+
+### Supported Regions
+
+| `apiRegion` value | REST Base URL | Description |
+|---|---|---|
+| `'default'` or omitted | `https://api.bybit.com` | Global default |
+| `'bytick'` | `https://api.bytick.com` | Alternative global domain |
+| `'EU'` | `https://api.bybit.eu` | Bybit EU (European regulatory domain) |
+| `'NL'` | `https://api.bybit.nl` | Netherlands |
+| `'TK'` | `https://api.bybit-tr.com` | Turkey |
+| `'KZ'` | `https://api.bybit.kz` | Kazakhstan |
+| `'HK'` | `https://api.byhkbit.com` | Hong Kong |
+| `'GE'` | `https://api.bybitgeorgia.ge` | Georgia |
+| `'UAE'` | `https://api.bybit.ae` | United Arab Emirates |
+
+### Regional Client Example
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+// Turkish users
+const trClient = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  apiRegion: 'TK',
+});
+
+// European users (Bybit EU regulated entity)
+const euClient = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  apiRegion: 'EU',
+});
+
+// Kazakhstan users
+const kzClient = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  apiRegion: 'KZ',
+});
+```
+
+### Custom Base URL
+
+If your target domain is not yet in the `apiRegion` list, use `baseUrl` to fully override the REST endpoint:
+
+```typescript
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+  baseUrl: 'https://api5.bybit.com',
+});
+```
+
+`baseUrl` takes precedence over `apiRegion` when both are set. Please also open a GitHub issue if you need a new region added to the built-in `apiRegion` map.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Configuration" href="/guides/configuration">
+    Full reference for all RestClientV5 and WebsocketClient options
+  </Card>
+  <Card title="Error Handling" href="/guides/error-handling">
+    Handle API errors and interpret response codes
+  </Card>
+</CardGroup>

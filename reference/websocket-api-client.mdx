@@ -1,0 +1,541 @@
+---
+title: "WebsocketAPIClient — Promise-Driven Bybit WS Order Management"
+sidebarTitle: "WebsocketAPIClient"
+description: "Full reference for WebsocketAPIClient, providing promise-based submitNewOrder, amendOrder, and cancelOrder methods over Bybit's WebSocket API."
+---
+
+`WebsocketAPIClient` wraps the lower-level `WebsocketClient.sendWSAPIRequest()` method with intuitive, strongly-typed methods for order management over WebSocket. Every method returns a `Promise` that resolves with the exchange's typed response — making it a drop-in replacement for the REST order API with significantly lower round-trip latency.
+
+## Installation & Import
+
+```bash
+npm install bybit-api
+```
+
+```typescript
+import { WebsocketAPIClient } from 'bybit-api';
+```
+
+## Constructor
+
+```typescript
+const client = new WebsocketAPIClient(options?, logger?);
+```
+
+<ParamField body="options" type="WSClientConfigurableOptions & Partial<WSAPIClientConfigurableOptions>" optional>
+  Accepts all `WSClientConfigurableOptions` fields (same as `WebsocketClient`) plus the following `WebsocketAPIClient`-specific option:
+
+  <Expandable title="WSClientConfigurableOptions fields">
+    <ParamField body="key" type="string" optional>Your API key (required for all WS API calls).</ParamField>
+    <ParamField body="secret" type="string" optional>Your API secret.</ParamField>
+    <ParamField body="testnet" type="boolean" optional>Connect to Bybit testnet. Default `false`.</ParamField>
+    <ParamField body="demoTrading" type="boolean" optional>Connect to Bybit V5 demo trading. Default `false`.</ParamField>
+    <ParamField body="recvWindow" type="number" optional>Receive window for auth signature (ms). Default `5000`.</ParamField>
+    <ParamField body="pingInterval" type="number" optional>Heartbeat interval in milliseconds.</ParamField>
+    <ParamField body="pongTimeout" type="number" optional>Pong timeout in milliseconds.</ParamField>
+    <ParamField body="reconnectTimeout" type="number" optional>Reconnect delay in milliseconds.</ParamField>
+    <ParamField body="wsUrl" type="string" optional>Override WebSocket URL.</ParamField>
+    <ParamField body="customSignMessageFn" type="(message: string, secret: string) => Promise<string>" optional>Custom HMAC signing function.</ParamField>
+  </Expandable>
+
+  <Expandable title="WSAPIClientConfigurableOptions fields">
+    <ParamField body="attachEventListeners" type="boolean" optional>
+      Default `true`. When enabled, the client attaches console-log event listeners for `open`, `reconnect`, `reconnected`, `authenticated`, and `exception` events on the underlying `WebsocketClient`. Set to `false` to manage all event listeners yourself.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="logger" type="DefaultLogger" optional>
+  Custom logger instance. Defaults to the SDK's built-in console logger.
+</ParamField>
+
+### Instantiation examples
+
+<CodeGroup>
+```typescript Mainnet
+import { WebsocketAPIClient } from 'bybit-api';
+
+const client = new WebsocketAPIClient({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+});
+```
+
+```typescript Testnet
+import { WebsocketAPIClient } from 'bybit-api';
+
+const client = new WebsocketAPIClient({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+  testnet: true,
+});
+```
+
+```typescript Custom event listeners
+import { WebsocketAPIClient } from 'bybit-api';
+
+const client = new WebsocketAPIClient(
+  {
+    key: 'YOUR_API_KEY',
+    secret: 'YOUR_API_SECRET',
+    attachEventListeners: false, // manage your own listeners
+  },
+);
+
+// Attach your own listeners
+client.getWSClient()
+  .on('open', ({ wsKey }) => console.log('Connected:', wsKey))
+  .on('exception', (data) => console.error('Error:', data));
+```
+</CodeGroup>
+
+<Note>
+  Authentication is handled automatically. The SDK opens and authenticates the `v5PrivateTrade` WebSocket connection the first time you call any order method. Call `client.getWSClient().connectWSAPI()` beforehand to pre-warm the connection and reduce first-call latency.
+</Note>
+
+---
+
+## Methods
+
+### `getWSClient()`
+
+Returns the underlying `WebsocketClient` instance. Use this to attach custom event listeners, access connection state, or call `subscribeV5()` for market-data streams.
+
+```typescript
+getWSClient(): WebsocketClient
+```
+
+```typescript
+const wsClient = client.getWSClient();
+
+wsClient.on('update', (data) => {
+  console.log('Market data:', data);
+});
+
+// You can also subscribe to public/private topics on the same client
+wsClient.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+```
+
+---
+
+### `setTimeOffsetMs(offset)`
+
+Manually adjust the time offset (in milliseconds) used when generating request timestamps and authentication signatures. Useful when the SDK detects clock drift that prevents valid signatures.
+
+```typescript
+setTimeOffsetMs(newOffset: number): void
+```
+
+<ParamField body="newOffset" type="number" required>
+  Time offset in milliseconds to add to `Date.now()` when building signed requests.
+</ParamField>
+
+---
+
+### `submitNewOrder(params)`
+
+Submit a new order over the WebSocket API.
+
+```typescript
+submitNewOrder(
+  params: OrderParamsV5,
+): Promise<WSAPIResponse<OrderResultV5, 'order.create'>>
+```
+
+<ParamField body="params" type="OrderParamsV5" required>
+  Full order parameters. See the [Types reference](/reference/types) for the complete `OrderParamsV5` interface.
+
+  Key fields:
+
+  | Field | Type | Required | Description |
+  |-------|------|:--------:|-------------|
+  | `category` | `CategoryV5` | ✅ | `'spot' \| 'linear' \| 'inverse' \| 'option'` |
+  | `symbol` | `string` | ✅ | Trading pair, e.g. `'BTCUSDT'` |
+  | `side` | `'Buy' \| 'Sell'` | ✅ | Order side |
+  | `orderType` | `'Market' \| 'Limit'` | ✅ | Order type |
+  | `qty` | `string` | ✅ | Order quantity as string |
+  | `price` | `string` | — | Limit price (required for Limit orders) |
+  | `timeInForce` | `OrderTimeInForceV5` | — | `'GTC' \| 'IOC' \| 'FOK' \| 'PostOnly'` |
+  | `orderLinkId` | `string` | — | Client-defined order ID |
+  | `takeProfit` | `string` | — | Take-profit price |
+  | `stopLoss` | `string` | — | Stop-loss price |
+  | `reduceOnly` | `boolean` | — | Reduce-only flag |
+  | `positionIdx` | `number` | — | Position index (hedge mode) |
+</ParamField>
+
+```typescript
+const response = await client.submitNewOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  side: 'Buy',
+  orderType: 'Limit',
+  qty: '0.01',
+  price: '30000',
+  timeInForce: 'GTC',
+  orderLinkId: 'my-order-001',
+});
+
+console.log('Order ID:', response.data.orderId);
+console.log('retCode:', response.retCode); // 0 = success
+```
+
+---
+
+### `amendOrder(params)`
+
+Amend an existing open order.
+
+```typescript
+amendOrder(
+  params: AmendOrderParamsV5,
+): Promise<WSAPIResponse<OrderResultV5, 'order.amend'>>
+```
+
+<ParamField body="params" type="AmendOrderParamsV5" required>
+  | Field | Type | Required | Description |
+  |-------|------|:--------:|-------------|
+  | `category` | `CategoryV5` | ✅ | Instrument category |
+  | `symbol` | `string` | ✅ | Trading pair |
+  | `orderId` | `string` | — | Exchange order ID (orderId or orderLinkId required) |
+  | `orderLinkId` | `string` | — | Client order ID |
+  | `qty` | `string` | — | New quantity |
+  | `price` | `string` | — | New price |
+  | `takeProfit` | `string` | — | New take-profit |
+  | `stopLoss` | `string` | — | New stop-loss |
+  | `triggerPrice` | `string` | — | New trigger price |
+</ParamField>
+
+```typescript
+const response = await client.amendOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderId: 'abc123',
+  price: '29500',
+  qty: '0.02',
+});
+```
+
+---
+
+### `cancelOrder(params)`
+
+Cancel an existing open order.
+
+```typescript
+cancelOrder(
+  params: CancelOrderParamsV5,
+): Promise<WSAPIResponse<OrderResultV5, 'order.cancel'>>
+```
+
+<ParamField body="params" type="CancelOrderParamsV5" required>
+  | Field | Type | Required | Description |
+  |-------|------|:--------:|-------------|
+  | `category` | `CategoryV5` | ✅ | Instrument category |
+  | `symbol` | `string` | ✅ | Trading pair |
+  | `orderId` | `string` | — | Exchange order ID (orderId or orderLinkId required) |
+  | `orderLinkId` | `string` | — | Client order ID |
+  | `orderFilter` | `OrderFilterV5` | — | Order filter override |
+</ParamField>
+
+```typescript
+const response = await client.cancelOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderId: 'abc123',
+});
+```
+
+---
+
+### `batchSubmitOrders(category, orders)`
+
+Submit multiple orders in a single WS API request.
+
+```typescript
+batchSubmitOrders(
+  category: 'option' | 'linear',
+  orders: BatchOrderParamsV5[],
+): Promise<
+  WSAPIResponse<
+    { list: BatchCreateOrderResultV5[] },
+    'order.create-batch',
+    BatchOrdersRetExtInfoV5
+  >
+>
+```
+
+<ParamField body="category" type="'option' | 'linear'" required>
+  The instrument category. Only `'option'` and `'linear'` are supported for batch operations.
+</ParamField>
+<ParamField body="orders" type="BatchOrderParamsV5[]" required>
+  Array of order parameters. Each object matches `BatchOrderParamsV5` (similar to `OrderParamsV5` but without `category`).
+</ParamField>
+
+```typescript
+const response = await client.batchSubmitOrders('linear', [
+  {
+    symbol: 'BTCUSDT',
+    side: 'Buy',
+    orderType: 'Limit',
+    qty: '0.01',
+    price: '29000',
+    timeInForce: 'GTC',
+    orderLinkId: 'batch-1',
+  },
+  {
+    symbol: 'ETHUSDT',
+    side: 'Sell',
+    orderType: 'Limit',
+    qty: '0.1',
+    price: '2000',
+    timeInForce: 'GTC',
+    orderLinkId: 'batch-2',
+  },
+]);
+
+for (const order of response.data.list) {
+  console.log('Placed:', order.orderId, order.orderLinkId);
+}
+```
+
+---
+
+### `batchAmendOrder(category, orders)`
+
+Amend multiple orders in a single WS API request.
+
+```typescript
+batchAmendOrder(
+  category: 'option' | 'linear',
+  orders: BatchAmendOrderParamsV5[],
+): Promise<
+  WSAPIResponse<
+    { list: BatchAmendOrderResultV5[] },
+    'order.amend-batch',
+    BatchOrdersRetExtInfoV5
+  >
+>
+```
+
+<ParamField body="category" type="'option' | 'linear'" required>Instrument category.</ParamField>
+<ParamField body="orders" type="BatchAmendOrderParamsV5[]" required>
+  Array of amend parameters (symbol, orderId/orderLinkId, and updated fields).
+</ParamField>
+
+```typescript
+await client.batchAmendOrder('linear', [
+  { symbol: 'BTCUSDT', orderId: 'abc123', price: '28000' },
+  { symbol: 'ETHUSDT', orderLinkId: 'batch-2', qty: '0.2' },
+]);
+```
+
+---
+
+### `batchCancelOrder(category, orders)`
+
+Cancel multiple orders in a single WS API request.
+
+```typescript
+batchCancelOrder(
+  category: 'option' | 'linear',
+  orders: BatchCancelOrderParamsV5[],
+): Promise<
+  WSAPIResponse<
+    { list: BatchCancelOrderResultV5[] },
+    'order.cancel-batch',
+    BatchOrdersRetExtInfoV5
+  >
+>
+```
+
+<ParamField body="category" type="'option' | 'linear'" required>Instrument category.</ParamField>
+<ParamField body="orders" type="BatchCancelOrderParamsV5[]" required>
+  Array of cancel parameters. Each requires `symbol` and either `orderId` or `orderLinkId`.
+</ParamField>
+
+```typescript
+await client.batchCancelOrder('linear', [
+  { symbol: 'BTCUSDT', orderId: 'abc123' },
+  { symbol: 'ETHUSDT', orderLinkId: 'batch-2' },
+]);
+```
+
+---
+
+## WSAPIResponse Structure
+
+Every order method resolves with a `WSAPIResponse<TData, TOperation>` object.
+
+```typescript
+interface WSAPIResponse<
+  TResponseData extends object = object,
+  TOperation extends WSAPIOperation = WSAPIOperation,
+  TResponseExtInfo = {},
+> {
+  wsKey: WsKey;
+  reqId: string;
+  retCode: 0 | number;
+  retMsg: 'OK' | string;
+  op: TOperation;
+  data: TResponseData;
+  retExtInfo: TResponseExtInfo;
+  header?: {
+    'X-Bapi-Limit': string;
+    'X-Bapi-Limit-Status': string;
+    'X-Bapi-Limit-Reset-Timestamp': string;
+    Traceid: string;
+    Timenow: string;
+  };
+  connId: string;
+}
+```
+
+<ResponseField name="wsKey" type="WsKey">
+  The connection key that handled this request.
+</ResponseField>
+<ResponseField name="reqId" type="string">
+  Auto-generated request ID used to correlate the response.
+</ResponseField>
+<ResponseField name="retCode" type="number">
+  Return code. `0` indicates success. Non-zero values indicate errors — the promise rejects in this case.
+</ResponseField>
+<ResponseField name="retMsg" type="string">
+  Human-readable message. `'OK'` on success.
+</ResponseField>
+<ResponseField name="op" type="WSAPIOperation">
+  The operation that produced this response (e.g. `'order.create'`).
+</ResponseField>
+<ResponseField name="data" type="object">
+  Response payload. For single-order operations this is `OrderResultV5`. For batch operations it is `{ list: BatchCreateOrderResultV5[] }` etc.
+</ResponseField>
+<ResponseField name="retExtInfo" type="object">
+  Extended info object. Populated for batch operations with per-order status codes via `BatchOrdersRetExtInfoV5`.
+</ResponseField>
+<ResponseField name="connId" type="string">
+  The WebSocket connection ID from Bybit.
+</ResponseField>
+
+---
+
+## Supported WS API Operations
+
+The `WSAPIOperation` type and `WS_API_Operations` array enumerate every supported command.
+
+```typescript
+// Type
+export type WSAPIOperation =
+  | 'order.create'
+  | 'order.amend'
+  | 'order.cancel'
+  | 'order.create-batch'
+  | 'order.amend-batch'
+  | 'order.cancel-batch';
+
+// Runtime array (useful for validation)
+export const WS_API_Operations: WSAPIOperation[] = [
+  'order.create',
+  'order.amend',
+  'order.cancel',
+  'order.create-batch',
+  'order.amend-batch',
+  'order.cancel-batch',
+];
+```
+
+---
+
+## Error Handling
+
+When the exchange returns a non-zero `retCode`, the promise is **rejected** (not resolved). Always wrap calls in try/catch or use `.catch()`.
+
+```typescript
+try {
+  const result = await client.submitNewOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    side: 'Buy',
+    orderType: 'Limit',
+    qty: '0.01',
+    price: '1', // absurdly low — will be rejected
+    timeInForce: 'GTC',
+  });
+} catch (err) {
+  // err.retCode contains the Bybit error code
+  // err.retMsg contains the error message
+  console.error('Order failed:', err.retCode, err.retMsg);
+}
+```
+
+<Warning>
+  The promise is also rejected if the WebSocket connection closes before a response is received. Implement reconnect handling in your `on('exception', ...)` listener.
+</Warning>
+
+---
+
+## Full End-to-End Example
+
+```typescript
+import { WebsocketAPIClient } from 'bybit-api';
+
+async function main() {
+  const client = new WebsocketAPIClient({
+    key: process.env.BYBIT_KEY!,
+    secret: process.env.BYBIT_SECRET!,
+  });
+
+  // Optional: pre-warm connection to reduce first-order latency
+  await client.getWSClient().connectWSAPI();
+
+  // Place an order
+  const order = await client.submitNewOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    side: 'Buy',
+    orderType: 'Limit',
+    qty: '0.01',
+    price: '28000',
+    timeInForce: 'GTC',
+    orderLinkId: `order-${Date.now()}`,
+  });
+
+  console.log('Created:', order.data.orderId);
+
+  // Amend it
+  await client.amendOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    orderId: order.data.orderId,
+    price: '27500',
+  });
+
+  console.log('Amended');
+
+  // Cancel it
+  await client.cancelOrder({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    orderId: order.data.orderId,
+  });
+
+  console.log('Cancelled');
+}
+
+main().catch(console.error);
+```
+
+---
+
+<CardGroup cols={2}>
+  <Card title="WebsocketClient" href="/reference/websocket-client">
+    Lower-level WebSocket client with `sendWSAPIRequest()` and subscription methods.
+  </Card>
+  <Card title="Types Reference" href="/reference/types">
+    OrderParamsV5, WSAPIResponse, and all related type definitions.
+  </Card>
+  <Card title="Enums & Constants" href="/reference/enums">
+    WSAPIOperation values and WS_API_Operations array.
+  </Card>
+  <Card title="RestClientV5" href="/reference/rest-client-v5">
+    Full REST API reference as an alternative to WS order management.
+  </Card>
+</CardGroup>

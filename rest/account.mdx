@@ -1,0 +1,307 @@
+---
+title: "Account Endpoints — Balances, Fees, and Settings on Bybit"
+sidebarTitle: "Account"
+description: "Query wallet balances, fee rates, transaction logs, margin settings, and account info using RestClientV5 account management methods."
+---
+
+Account endpoints give you full visibility into your Bybit account — wallet balances across account types, trading fee rates, borrow history, transaction logs, margin configuration, and market maker protection (MMP) settings. All methods require an authenticated `RestClientV5` instance.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+---
+
+## Wallet Balances
+
+### `getWalletBalance`
+
+Query the balance of each coin in a specific account type. The `accountType` determines which wallet is queried.
+
+```typescript
+// Unified Trading Account
+const utaBalance = await client.getWalletBalance({
+  accountType: 'UNIFIED', // 'UNIFIED' | 'CONTRACT' | 'SPOT' | 'INVESTMENT' | 'OPTION' | 'FUND'
+  coin: 'USDT',           // optional — omit to get all coins
+});
+
+utaBalance.result.list.forEach((wallet) => {
+  wallet.coin.forEach((coinData) => {
+    console.log(
+      coinData.coin,
+      coinData.walletBalance,
+      coinData.availableToWithdraw,
+      coinData.unrealisedPnl,
+    );
+  });
+});
+```
+
+### `getAllCoinsBalance`
+
+Query balances for all coins in a given account type. Useful for building portfolio snapshots.
+
+```typescript
+const allBalances = await client.getAllCoinsBalance({
+  accountType: 'UNIFIED',
+  withBonus: 0, // optional: 1 to include bonus balance
+});
+
+allBalances.result.balance.forEach((coin) => {
+  console.log(coin.coin, coin.walletBalance, coin.transferBalance);
+});
+```
+
+---
+
+## Fee Rate
+
+### `getFeeRate`
+
+Query your current maker/taker fee rates for a category. Fee rates vary by VIP tier and trading volume.
+
+```typescript
+const fees = await client.getFeeRate({
+  category: 'linear',  // 'spot' | 'linear' | 'inverse' | 'option'
+  symbol: 'BTCUSDT',   // optional — omit for all symbols in category
+});
+
+fees.result.list.forEach((feeInfo) => {
+  console.log(
+    feeInfo.symbol,
+    feeInfo.takerFeeRate,
+    feeInfo.makerFeeRate,
+  );
+});
+```
+
+---
+
+## Account Info
+
+### `getAccountInfo`
+
+Query general account configuration — account type, margin mode, IM/MM rates, and upgrade status.
+
+```typescript
+const info = await client.getAccountInfo();
+
+console.log(info.result.unifiedMarginStatus); // 1 = classic, 3 = unified, 4 = UTA Pro
+console.log(info.result.marginMode);           // 'REGULAR_MARGIN' | 'PORTFOLIO_MARGIN'
+console.log(info.result.dcpStatus);            // DCP (Disconnect Cancel All) state
+```
+
+---
+
+## Transaction Log
+
+### `getTransactionLog`
+
+Query the transaction log for a Unified Trading Account. Covers trades, funding, transfers, settlements, and more.
+
+```typescript
+const txLog = await client.getTransactionLog({
+  accountType: 'UNIFIED',
+  category: 'linear',      // optional category filter
+  currency: 'USDT',        // optional coin filter
+  type: 'TRADE',           // optional: TransactionTypeV5 — 'TRADE' | 'SETTLEMENT' | 'DELIVERY' | ...
+  startTime: Date.now() - 30 * 24 * 60 * 60 * 1000,
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+
+txLog.result.list.forEach((entry) => {
+  console.log(entry.transactionTime, entry.type, entry.coin, entry.change);
+});
+```
+
+### `getClassicTransactionLogs`
+
+Query the transaction log for classic (non-UTA) CONTRACT accounts.
+
+```typescript
+const classicLog = await client.getClassicTransactionLogs({
+  currency: 'USDT',
+  type: 'TRADE',
+  startTime: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  limit: 50,
+});
+```
+
+---
+
+## Borrow History
+
+### `getBorrowHistory`
+
+Query borrowing history for a Unified Trading Account (margin loan history).
+
+```typescript
+const borrowHistory = await client.getBorrowHistory({
+  currency: 'USDT',        // optional — filter by coin
+  startTime: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+
+borrowHistory.result.list.forEach((record) => {
+  console.log(
+    record.currency,
+    record.borrowAmount,
+    record.borrowCost,
+    record.createdTime,
+  );
+});
+```
+
+### `repayLiability`
+
+Repay outstanding margin loan liabilities immediately using available wallet balance.
+
+```typescript
+// Repay all outstanding USDT liability
+const repay = await client.repayLiability({
+  coin: 'USDT', // optional — omit to repay all coins
+});
+
+if (repay.retCode === 0) {
+  console.log('Liability repaid');
+}
+```
+
+---
+
+## Collateral Settings
+
+### `setCollateralCoin`
+
+Enable or disable a specific coin as collateral for your Unified Trading Account margin.
+
+```typescript
+await client.setCollateralCoin({
+  coin: 'BTC',
+  collateralSwitch: 'ON',  // 'ON' | 'OFF'
+});
+```
+
+### `getCollateralInfo`
+
+Query which coins are eligible and currently enabled as collateral, along with their haircut rates.
+
+```typescript
+const collateral = await client.getCollateralInfo({
+  currency: 'BTC', // optional — omit for all coins
+});
+
+collateral.result.list.forEach((item) => {
+  console.log(
+    item.currency,
+    item.collateralSwitch,
+    item.borrowingPrecision,
+    item.repaymentPrecision,
+  );
+});
+```
+
+---
+
+## Margin Mode
+
+### `setMarginMode`
+
+Switch the account-level margin mode. Options are regular margin (`REGULAR_MARGIN`) or portfolio margin (`PORTFOLIO_MARGIN`).
+
+```typescript
+const result = await client.setMarginMode('REGULAR_MARGIN');
+// 'REGULAR_MARGIN' | 'PORTFOLIO_MARGIN' | 'ISOLATED_MARGIN'
+
+if (result.retCode !== 0) {
+  console.error('Margin mode switch failed:', result.retMsg);
+}
+```
+
+### `setSpotHedging`
+
+Enable or disable spot hedging mode for a Unified Trading Account. When enabled, spot balances can offset linear perpetual positions.
+
+```typescript
+await client.setSpotHedging({
+  setHedgingMode: 'ON',  // 'ON' | 'OFF'
+});
+```
+
+---
+
+## Upgrade to Unified Account
+
+### `upgradeToUnifiedAccount`
+
+Upgrade a classic account to a Unified Trading Account. This is a one-way, irreversible operation.
+
+```typescript
+const upgrade = await client.upgradeToUnifiedAccount();
+
+if (upgrade.retCode === 0) {
+  console.log('Account upgraded to UTA');
+} else {
+  console.error('Upgrade failed:', upgrade.retMsg);
+}
+```
+
+<Warning>
+  Upgrading to a Unified Trading Account cannot be undone. Ensure you understand the implications for your margin, fee structure, and open positions before proceeding.
+</Warning>
+
+---
+
+## Market Maker Protection (MMP)
+
+MMP automatically pauses an options market maker's quoting activity when their trade volume or delta exposure exceeds thresholds within a rolling time window, helping to manage risk from rapid one-directional trading.
+
+### `setMMP`
+
+Configure MMP parameters for an options base coin.
+
+```typescript
+await client.setMMP({
+  baseCoin: 'BTC',
+  window: '5000',       // rolling window in milliseconds
+  frozenPeriod: '100000', // pause duration in milliseconds after MMP triggers
+  qtyLimit: '10',       // max total quantity before MMP triggers
+  deltaLimit: '0.1',    // max delta exposure before MMP triggers
+});
+```
+
+### `resetMMP`
+
+Manually reset MMP after it has been triggered, restoring quoting activity.
+
+```typescript
+await client.resetMMP({
+  baseCoin: 'BTC',
+});
+```
+
+### `getMMPState`
+
+Query the current MMP configuration and state for a base coin.
+
+```typescript
+const mmpState = await client.getMMPState({
+  baseCoin: 'BTC',
+});
+
+console.log(
+  mmpState.result.state[0].mmpEnabled,
+  mmpState.result.state[0].frozen,   // true if currently paused by MMP trigger
+  mmpState.result.state[0].qtyLimit,
+  mmpState.result.state[0].deltaLimit,
+);
+```

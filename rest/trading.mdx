@@ -1,0 +1,348 @@
+---
+title: "Trading Endpoints — Place, Amend, and Cancel Orders on Bybit"
+sidebarTitle: "Trading"
+description: "Submit, amend, cancel, and batch orders on Bybit using RestClientV5. Covers spot, linear, inverse, and option categories with full TypeScript types."
+---
+
+Trading endpoints require authentication — you must initialise `RestClientV5` with a valid API key and secret. All order operations are gated behind the `category` parameter, which selects the market you want to trade.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+## The `category` Parameter
+
+Every order method accepts a `category` field that selects which market segment the order is routed to:
+
+| Value | Description |
+|---|---|
+| `'spot'` | Spot trading (e.g. BTCUSDT) |
+| `'linear'` | USDT/USDC margined perpetuals and futures (e.g. BTCUSDT perp) |
+| `'inverse'` | Coin-margined (inverse) perpetuals and futures (e.g. BTCUSD) |
+| `'option'` | Options contracts (e.g. BTC-25DEC25-100000-C) |
+
+---
+
+## Single Orders
+
+### `submitOrder`
+
+Place a new order. The full `OrderParamsV5` type covers all order configurations across all categories.
+
+```typescript
+import { RestClientV5, OrderParamsV5 } from 'bybit-api';
+
+const client = new RestClientV5({ key: '...', secret: '...' });
+
+// Market buy
+const marketOrder = await client.submitOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  side: 'Buy',          // 'Buy' | 'Sell'
+  orderType: 'Market',  // 'Market' | 'Limit'
+  qty: '0.01',
+});
+
+// Limit sell with TP/SL
+const limitOrder = await client.submitOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  side: 'Sell',
+  orderType: 'Limit',
+  qty: '0.01',
+  price: '72000',
+  timeInForce: 'GTC',       // 'GTC' | 'IOC' | 'FOK' | 'PostOnly' | 'RPI'
+  orderLinkId: 'my-order-1', // optional client order ID for idempotency
+  takeProfit: '68000',
+  stopLoss: '75000',
+  tpTriggerBy: 'MarkPrice',  // 'LastPrice' | 'IndexPrice' | 'MarkPrice'
+  slTriggerBy: 'MarkPrice',
+  reduceOnly: false,
+});
+
+if (limitOrder.retCode === 0) {
+  console.log('Order placed:', limitOrder.result.orderId);
+} else {
+  console.error(`Error ${limitOrder.retCode}: ${limitOrder.retMsg}`);
+}
+```
+
+<Note>
+  The `orderLinkId` field is your own unique client-side identifier for the order. Use it to correlate requests with Bybit order IDs and for idempotent retries.
+</Note>
+
+#### Key `OrderParamsV5` Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `category` | `CategoryV5` | Yes | Market category |
+| `symbol` | `string` | Yes | Trading pair, e.g. `'BTCUSDT'` |
+| `side` | `'Buy' \| 'Sell'` | Yes | Order direction |
+| `orderType` | `'Market' \| 'Limit'` | Yes | Execution type |
+| `qty` | `string` | Yes | Order quantity (base coin) |
+| `price` | `string` | Limit only | Limit price |
+| `timeInForce` | `OrderTimeInForceV5` | No | `'GTC'`, `'IOC'`, `'FOK'`, `'PostOnly'`, `'RPI'` |
+| `orderLinkId` | `string` | No | Client order ID (max 36 chars) |
+| `takeProfit` | `string` | No | TP trigger price |
+| `stopLoss` | `string` | No | SL trigger price |
+| `reduceOnly` | `boolean` | No | If `true`, only reduces an existing position |
+| `positionIdx` | `PositionIdx` | No | `0` = one-way mode, `1` = hedge Buy, `2` = hedge Sell |
+
+### `amendOrder`
+
+Modify an existing open order's price, quantity, or TP/SL. Either `orderId` or `orderLinkId` must be provided.
+
+```typescript
+const amended = await client.amendOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderId: '1234567890',  // use orderId OR orderLinkId
+  price: '71500',         // new limit price
+  qty: '0.02',            // new quantity
+  takeProfit: '69000',
+  stopLoss: '74000',
+});
+```
+
+### `cancelOrder`
+
+Cancel an open order by `orderId` or `orderLinkId`.
+
+```typescript
+const cancelled = await client.cancelOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderId: '1234567890',
+});
+```
+
+---
+
+## Order Management
+
+### `getActiveOrders`
+
+Query currently open (unfilled) orders.
+
+```typescript
+const openOrders = await client.getActiveOrders({
+  category: 'linear',
+  symbol: 'BTCUSDT',  // optional — omit for all symbols
+  limit: 50,
+  cursor: undefined,
+});
+
+openOrders.result.list.forEach((order) => {
+  console.log(order.orderId, order.side, order.price, order.qty, order.orderStatus);
+});
+```
+
+### `cancelAllOrders`
+
+Cancel all open orders for a category, optionally filtered by symbol.
+
+```typescript
+const result = await client.cancelAllOrders({
+  category: 'linear',
+  symbol: 'BTCUSDT',   // optional — omit to cancel all across all symbols
+});
+
+console.log(`Cancelled ${result.result.list.length} orders`);
+```
+
+### `getHistoricOrders`
+
+Query completed or cancelled orders. Results are paginated.
+
+```typescript
+const history = await client.getHistoricOrders({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  orderStatus: 'Filled', // optional filter
+  startTime: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+```
+
+### `getExecutionList`
+
+Query trade execution (fill) history.
+
+```typescript
+const executions = await client.getExecutionList({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  startTime: Date.now() - 24 * 60 * 60 * 1000,
+  limit: 100,
+});
+
+executions.result.list.forEach((fill) => {
+  console.log(fill.execTime, fill.execPrice, fill.execQty, fill.execFee);
+});
+```
+
+---
+
+## Batch Orders
+
+Batch endpoints let you submit up to 20 operations in a single HTTP request, reducing round-trip latency.
+
+### `batchSubmitOrders`
+
+```typescript
+const batchResult = await client.batchSubmitOrders({
+  category: 'linear',
+  request: [
+    {
+      symbol: 'BTCUSDT',
+      side: 'Buy',
+      orderType: 'Limit',
+      qty: '0.01',
+      price: '60000',
+      orderLinkId: 'batch-buy-1',
+    },
+    {
+      symbol: 'ETHUSDT',
+      side: 'Sell',
+      orderType: 'Limit',
+      qty: '0.1',
+      price: '4000',
+      orderLinkId: 'batch-sell-1',
+    },
+  ],
+});
+
+// batchResult.result.list — per-order responses
+// batchResult.retExtInfo.list — per-order error codes
+batchResult.result.list.forEach((order, idx) => {
+  const ext = batchResult.retExtInfo.list[idx];
+  if (ext.code === 0) {
+    console.log(`Order ${order.orderLinkId} placed: ${order.orderId}`);
+  } else {
+    console.error(`Order ${order.orderLinkId} failed: ${ext.msg}`);
+  }
+});
+```
+
+### `batchAmendOrders`
+
+```typescript
+const amended = await client.batchAmendOrders({
+  category: 'linear',
+  request: [
+    { symbol: 'BTCUSDT', orderId: '111', price: '61000' },
+    { symbol: 'ETHUSDT', orderLinkId: 'batch-sell-1', price: '3950' },
+  ],
+});
+```
+
+### `batchCancelOrders`
+
+```typescript
+const cancelled = await client.batchCancelOrders({
+  category: 'linear',
+  request: [
+    { symbol: 'BTCUSDT', orderId: '111' },
+    { symbol: 'ETHUSDT', orderLinkId: 'batch-sell-1' },
+  ],
+});
+```
+
+---
+
+## Strategy Orders
+
+Strategy orders allow you to run automated execution algorithms such as TWAP, chase order, iceberg, and POV directly through the API.
+
+### `createStrategyOrder`
+
+```typescript
+const strategy = await client.createStrategyOrder({
+  category: 'UTA_USDT',        // StrategyCategoryV5
+  strategyType: 'twap',        // 'twap' | 'chaseOrder' | 'iceberg' | 'pov'
+  symbol: 'BTCUSDT',
+  side: 'Buy',
+  qty: '1',
+  timeRange: 3600,             // execution window in seconds
+  orderLinkId: 'twap-btc-001',
+});
+```
+
+### `getStrategyList`
+
+Query your list of active strategies.
+
+```typescript
+const strategies = await client.getStrategyList({
+  category: 'UTA_USDT',
+  strategyType: 'twap',
+});
+```
+
+### `getStrategyOrderList`
+
+Query individual child orders generated by a strategy.
+
+```typescript
+const strategyOrders = await client.getStrategyOrderList({
+  category: 'UTA_USDT',
+  orderLinkId: 'twap-btc-001',
+});
+```
+
+### `stopStrategy`
+
+Stop a running strategy early.
+
+```typescript
+await client.stopStrategy({
+  category: 'UTA_USDT',
+  orderLinkId: 'twap-btc-001',
+});
+```
+
+---
+
+## Disconnect Cancel All (DCP)
+
+### `setDisconnectCancelAllWindow`
+
+Configure the DCP window. If the WebSocket connection drops and is not re-established within the configured window, all open orders are automatically cancelled. Set `window` to `0` to disable.
+
+```typescript
+await client.setDisconnectCancelAllWindow({
+  timeWindow: 10, // seconds (0 to disable, max 65)
+});
+```
+
+---
+
+## Pre-Check Order
+
+### `preCheckOrder`
+
+Validate an order against your account's buying power and risk controls without actually placing it. Useful for verifying params before committing.
+
+```typescript
+const check = await client.preCheckOrder({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  side: 'Buy',
+  orderType: 'Limit',
+  qty: '1',
+  price: '65000',
+});
+
+if (check.retCode === 0) {
+  console.log('Order would be accepted');
+} else {
+  console.log('Pre-check failed:', check.retMsg);
+}
+```

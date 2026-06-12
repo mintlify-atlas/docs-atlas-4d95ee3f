@@ -1,0 +1,597 @@
+---
+title: "TypeScript Type Reference for bybit-api"
+sidebarTitle: "Types"
+description: "Key TypeScript interfaces and types exported by bybit-api, including request params, response shapes, WebSocket event types, and client configuration."
+---
+
+The bybit-api SDK is written in TypeScript and ships with complete type definitions. All public types are re-exported from the package root so you can import them alongside the clients without navigating into internal paths.
+
+## How Types Are Exported
+
+Every public type flows through `src/types/index.ts` and is then re-exported from the package root (`src/index.ts`). Import them directly from `'bybit-api'`:
+
+```typescript
+import {
+  RestClientV5,
+  WebsocketClient,
+  WebsocketAPIClient,
+  // Types
+  RestClientOptions,
+  WSClientConfigurableOptions,
+  CategoryV5,
+  OrderParamsV5,
+  AmendOrderParamsV5,
+  CancelOrderParamsV5,
+  BatchOrderParamsV5,
+  APIResponseV3WithTime,
+  WSAPIResponse,
+  WSAPIOperation,
+  WsKey,
+  WsTopic,
+} from 'bybit-api';
+```
+
+---
+
+## Client Configuration Types
+
+### `RestClientOptions`
+
+Configuration object passed to `new RestClientV5(options)`.
+
+```typescript
+interface RestClientOptions {
+  /** Your API key */
+  key?: string;
+
+  /** Your API secret */
+  secret?: string;
+
+  /** Connect to testnet. Default false. */
+  testnet?: boolean;
+
+  /** Use Bybit V5 demo trading. Default false. */
+  demoTrading?: boolean;
+
+  /** Override the request recv_window in milliseconds */
+  recv_window?: number;
+
+  /**
+   * Override the API region.
+   * 'default' | 'bytick' | 'NL' | 'TK' | 'KZ' | 'HK' | 'GE' | 'UAE' | 'EU'
+   */
+  apiRegion?: APIRegion;
+
+  /** Override the API base URL, e.g. 'https://api.bytick.com' */
+  baseUrl?: string;
+
+  /** Sync clock drift with Bybit servers before private requests. Default false. */
+  enable_time_sync?: boolean;
+
+  /** Enable HTTP keep-alive for REST requests. */
+  keepAlive?: boolean;
+
+  /** If true, request params are URI-encoded during signing. Default true. */
+  encodeSerialisedValues?: boolean;
+
+  /** Parse per-endpoint rate limit headers. Default false. */
+  parseAPIRateLimits?: boolean;
+
+  /** Throw on failed REST API responses. Default false. */
+  throwExceptions?: boolean;
+
+  /** Throw if any request params are undefined. Default false. */
+  strict_param_validation?: boolean;
+
+  /** Custom HMAC signing function. */
+  customSignMessageFn?: (message: string, secret: string) => Promise<string>;
+}
+```
+
+---
+
+### `WSClientConfigurableOptions`
+
+Configuration object passed to `new WebsocketClient(options)` and `new WebsocketAPIClient(options)`.
+
+```typescript
+interface WSClientConfigurableOptions {
+  /** Your API key */
+  key?: string;
+
+  /** Your API secret */
+  secret?: string;
+
+  /** Connect to testnet. Default false. */
+  testnet?: boolean;
+
+  /** Use Bybit V5 demo trading. Default false. */
+  demoTrading?: boolean;
+
+  /**
+   * API market group. Currently only 'v5' is supported.
+   */
+  market?: APIMarket; // 'v5'
+
+  /** Receive window for private WS auth signature in ms. Default 5000. */
+  recvWindow?: number;
+
+  /** Heartbeat ping interval in ms. */
+  pingInterval?: number;
+
+  /** Pong timeout in ms. */
+  pongTimeout?: number;
+
+  /** Reconnect delay in ms. */
+  reconnectTimeout?: number;
+
+  /** Override WebSocket URL. */
+  wsUrl?: string;
+
+  /**
+   * If true, subscribe() calls return promises.
+   * Default false.
+   */
+  promiseSubscribeRequests?: boolean;
+
+  /** Custom HMAC signing function. */
+  customSignMessageFn?: (message: string, secret: string) => Promise<string>;
+}
+```
+
+---
+
+### `WSAPIClientConfigurableOptions`
+
+Additional options exclusive to `WebsocketAPIClient`.
+
+```typescript
+interface WSAPIClientConfigurableOptions {
+  /**
+   * Default: true.
+   * Attach default console-log event listeners for connection lifecycle events.
+   * Set to false to manage all listeners yourself.
+   */
+  attachEventListeners: boolean;
+}
+```
+
+---
+
+## Shared V5 Types
+
+### `CategoryV5`
+
+The product category used by nearly every V5 API method and WebSocket subscription.
+
+```typescript
+type CategoryV5 = 'spot' | 'linear' | 'inverse' | 'option';
+```
+
+| Value | Description |
+|-------|-------------|
+| `'spot'` | Spot trading |
+| `'linear'` | USDT/USDC-margined perpetuals and futures |
+| `'inverse'` | Coin-margined (BTC-margined) perpetuals and futures |
+| `'option'` | USDC options |
+
+---
+
+### `OrderSideV5`
+
+```typescript
+type OrderSideV5 = 'Buy' | 'Sell';
+```
+
+---
+
+### `OrderTypeV5`
+
+```typescript
+type OrderTypeV5 = 'Market' | 'Limit';
+```
+
+---
+
+### `OrderTimeInForceV5`
+
+```typescript
+type OrderTimeInForceV5 = 'GTC' | 'IOC' | 'FOK' | 'PostOnly' | 'RPI';
+```
+
+| Value | Description |
+|-------|-------------|
+| `'GTC'` | Good-till-cancel |
+| `'IOC'` | Immediate-or-cancel |
+| `'FOK'` | Fill-or-kill |
+| `'PostOnly'` | Post-only (maker only) |
+| `'RPI'` | Retail price improvement |
+
+---
+
+### `OrderTriggerByV5`
+
+```typescript
+type OrderTriggerByV5 = 'LastPrice' | 'IndexPrice' | 'MarkPrice';
+```
+
+---
+
+### `OrderStatusV5`
+
+```typescript
+type OrderStatusV5 =
+  | 'Created'
+  | 'New'
+  | 'Rejected'
+  | 'PartiallyFilled'
+  | 'PartiallyFilledCanceled'
+  | 'Filled'
+  | 'Cancelled'
+  | 'Untriggered'
+  | 'Triggered'
+  | 'Deactivated'
+  | 'Active';
+```
+
+---
+
+### `ContractTypeV5`
+
+```typescript
+type ContractTypeV5 =
+  | 'InversePerpetual'
+  | 'LinearPerpetual'
+  | 'InverseFutures';
+```
+
+---
+
+### `InstrumentStatusV5`
+
+```typescript
+type InstrumentStatusV5 =
+  | 'PreLaunch'
+  | 'Trading'
+  | 'Settling'
+  | 'Delivering'
+  | 'Closed';
+```
+
+---
+
+## Trading Request Types
+
+### `OrderParamsV5`
+
+Full parameter interface for `RestClientV5.submitOrder()` and `WebsocketAPIClient.submitNewOrder()`.
+
+```typescript
+interface OrderParamsV5 {
+  category: CategoryV5;           // required — instrument category
+  symbol: string;                  // required — trading pair, e.g. 'BTCUSDT'
+  side: OrderSideV5;              // required — 'Buy' | 'Sell'
+  orderType: OrderTypeV5;         // required — 'Market' | 'Limit'
+  qty: string;                     // required — quantity as string
+  isLeverage?: 0 | 1;             // spot only: whether to borrow
+  marketUnit?: 'baseCoin' | 'quoteCoin';
+  slippageToleranceType?: string;
+  slippageTolerance?: string;
+  price?: string;                  // required for Limit orders
+  triggerDirection?: 1 | 2;       // conditional order direction
+  orderFilter?: OrderFilterV5;    // 'Order' | 'tpslOrder' | 'StopOrder'
+  triggerPrice?: string;          // conditional order trigger price
+  triggerBy?: OrderTriggerByV5;
+  orderIv?: string;               // option implied volatility
+  timeInForce?: OrderTimeInForceV5;
+  positionIdx?: PositionIdx;      // 0=one-way, 1=buy-side hedge, 2=sell-side hedge
+  orderLinkId?: string;           // client-defined order ID
+  takeProfit?: string;
+  stopLoss?: string;
+  tpTriggerBy?: OrderTriggerByV5;
+  slTriggerBy?: OrderTriggerByV5;
+  reduceOnly?: boolean;
+  closeOnTrigger?: boolean;
+  smpType?: OrderSMPTypeV5;       // self-match prevention
+  mmp?: boolean;                  // market maker protection
+  tpslMode?: 'Full' | 'Partial';
+  tpLimitPrice?: string;
+  slLimitPrice?: string;
+  tpOrderType?: OrderTypeV5;
+  slOrderType?: OrderTypeV5;
+  bboSideType?: 'Queue' | 'Counterparty';
+  bboLevel?: '1' | '2' | '3' | '4' | '5';
+}
+```
+
+---
+
+### `AmendOrderParamsV5`
+
+Parameters for amending an open order.
+
+```typescript
+interface AmendOrderParamsV5 {
+  category: CategoryV5;     // required
+  symbol: string;            // required
+  orderId?: string;          // orderId or orderLinkId required
+  orderLinkId?: string;
+  orderIv?: string;
+  triggerPrice?: string;
+  qty?: string;
+  price?: string;
+  tpslMode?: 'Full' | 'Partial';
+  takeProfit?: string;
+  stopLoss?: string;
+  tpTriggerBy?: OrderTriggerByV5;
+  slTriggerBy?: OrderTriggerByV5;
+  triggerBy?: OrderTriggerByV5;
+  tpLimitPrice?: string;
+  slLimitPrice?: string;
+}
+```
+
+---
+
+### `CancelOrderParamsV5`
+
+Parameters for cancelling an open order.
+
+```typescript
+interface CancelOrderParamsV5 {
+  category: CategoryV5;     // required
+  symbol: string;            // required
+  orderId?: string;          // orderId or orderLinkId required
+  orderLinkId?: string;
+  orderFilter?: OrderFilterV5;
+}
+```
+
+---
+
+### `BatchOrderParamsV5`
+
+Per-order parameters used inside `batchSubmitOrders()`. Same as `OrderParamsV5` but without `category` (provided at the top level).
+
+```typescript
+interface BatchOrderParamsV5 {
+  symbol: string;
+  side: OrderSideV5;
+  isLeverage?: 0 | 1;
+  orderType: OrderTypeV5;
+  qty: string;
+  price?: string;
+  triggerDirection?: 1 | 2;
+  triggerBy?: OrderTriggerByV5;
+  orderIv?: string;
+  timeInForce?: OrderTimeInForceV5;
+  positionIdx?: PositionIdx;
+  orderLinkId?: string;
+  takeProfit?: string;
+  stopLoss?: string;
+  tpTriggerBy?: OrderTriggerByV5;
+  slTriggerBy?: OrderTriggerByV5;
+  reduceOnly?: boolean;
+  closeOnTrigger?: boolean;
+  smpType?: OrderSMPTypeV5;
+  mmp?: boolean;
+  tpslMode?: 'Full' | 'Partial';
+  tpLimitPrice?: string;
+  slLimitPrice?: string;
+  tpOrderType?: OrderTypeV5;
+  slOrderType?: OrderTypeV5;
+}
+```
+
+---
+
+### `BatchAmendOrderParamsV5`
+
+Per-order parameters for `batchAmendOrder()`.
+
+```typescript
+interface BatchAmendOrderParamsV5 {
+  symbol: string;
+  orderId?: string;
+  orderLinkId?: string;
+  orderIv?: string;
+  triggerPrice?: string;
+  qty?: string;
+  price?: string;
+  tpslMode?: 'Full' | 'Partial';
+  takeProfit?: string;
+  stopLoss?: string;
+  tpTriggerBy?: OrderTriggerByV5;
+  slTriggerBy?: OrderTriggerByV5;
+  triggerBy?: OrderTriggerByV5;
+  tpLimitPrice?: string;
+  slLimitPrice?: string;
+}
+```
+
+---
+
+### `BatchCancelOrderParamsV5`
+
+Per-order parameters for `batchCancelOrder()`.
+
+```typescript
+interface BatchCancelOrderParamsV5 {
+  symbol: string;
+  orderId?: string;          // orderId or orderLinkId required
+  orderLinkId?: string;
+}
+```
+
+---
+
+## Response Envelope Types
+
+### `APIResponseV3<TResult>`
+
+Standard REST response envelope returned by all V5 REST methods.
+
+```typescript
+interface APIResponseV3<TResult, TExtInfo = {}> {
+  retCode: number;
+  retMsg: 'OK' | string;
+  result: TResult;
+  retExtInfo: TExtInfo;
+  /**
+   * Per-UID per-endpoint rate limits parsed from response headers.
+   * Only available for authenticated V5 requests when parseAPIRateLimits is enabled.
+   */
+  rateLimitApi?: APIRateLimit;
+}
+```
+
+---
+
+### `APIResponseV3WithTime<TResult>`
+
+`APIResponseV3` with an additional `time` field (Unix millisecond timestamp).
+
+```typescript
+type APIResponseV3WithTime<TResult, TExtInfo = {}> = APIResponseV3<TResult, TExtInfo> & {
+  time: number;
+};
+```
+
+Most V5 REST methods return `APIResponseV3WithTime`. Use the `result` field to access the typed response data:
+
+```typescript
+const res = await client.getWalletBalance({ accountType: 'UNIFIED' });
+// res.result.list → WalletBalanceV5[]
+// res.time → Unix millisecond timestamp
+// res.retCode → 0 on success
+```
+
+---
+
+## WebSocket Types
+
+### `WsKey`
+
+Union type of all valid WebSocket connection key strings, derived from `WS_KEY_MAP`.
+
+```typescript
+type WsKey = (typeof WS_KEY_MAP)[keyof typeof WS_KEY_MAP];
+// Resolves to:
+// | 'v5SpotPublic'
+// | 'v5LinearPublic'
+// | 'v5InversePublic'
+// | 'v5OptionPublic'
+// | 'v5Private'
+// | 'v5PrivateTrade'
+```
+
+---
+
+### `WsTopic`
+
+Union of all recognised WebSocket topic string types.
+
+```typescript
+type WsTopic = WsPublicTopics | WsPrivateTopic;
+// Includes: 'orderBookL2_25', 'trade', 'kline', 'position',
+// 'execution', 'order', 'wallet', 'instrument_info', and more.
+// Also accepts arbitrary strings for forward compatibility.
+```
+
+---
+
+### `WSAPIOperation`
+
+All supported WebSocket API command strings.
+
+```typescript
+type WSAPIOperation =
+  | 'order.create'
+  | 'order.amend'
+  | 'order.cancel'
+  | 'order.create-batch'
+  | 'order.amend-batch'
+  | 'order.cancel-batch';
+```
+
+---
+
+### `WSAPIResponse<TData, TOperation, TExtInfo>`
+
+Generic response type returned by every `WebsocketAPIClient` method and `WebsocketClient.sendWSAPIRequest()`.
+
+```typescript
+interface WSAPIResponse<
+  TResponseData extends object = object,
+  TOperation extends WSAPIOperation = WSAPIOperation,
+  TResponseExtInfo = {},
+> {
+  wsKey: WsKey;
+  reqId: string;
+  retCode: 0 | number;
+  retMsg: 'OK' | string;
+  op: TOperation;
+  data: TResponseData;
+  retExtInfo: TResponseExtInfo;
+  header?: {
+    'X-Bapi-Limit': string;
+    'X-Bapi-Limit-Status': string;
+    'X-Bapi-Limit-Reset-Timestamp': string;
+    Traceid: string;
+    Timenow: string;
+  };
+  connId: string;
+}
+```
+
+---
+
+### `WsRequestOperationBybit<TWSTopic>`
+
+The shape of subscription/unsubscription request objects sent to Bybit WebSocket connections.
+
+```typescript
+interface WsRequestOperationBybit<TWSTopic extends string> {
+  req_id: string;
+  op: WsOperation; // 'subscribe' | 'unsubscribe' | 'auth' | 'ping' | 'pong'
+  args?: (TWSTopic | string | number)[];
+}
+```
+
+---
+
+## APIRegion Type
+
+```typescript
+type APIRegion =
+  | 'default'
+  | 'bytick'
+  | 'NL'
+  | 'TK'
+  | 'KZ'
+  | 'HK'
+  | 'GE'
+  | 'UAE'
+  | 'EU';
+```
+
+<Note>
+  The `'EU'` region routes requests to Bybit's EU-compliant API endpoint. Ensure you use the correct region for your jurisdiction and account type.
+</Note>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="RestClientV5" href="/reference/rest-client-v5">
+    Full REST method reference using these types.
+  </Card>
+  <Card title="WebsocketClient" href="/reference/websocket-client">
+    WebSocket subscriptions and event emitter API.
+  </Card>
+  <Card title="WebsocketAPIClient" href="/reference/websocket-api-client">
+    Promise-based WS order management.
+  </Card>
+  <Card title="Enums & Constants" href="/reference/enums">
+    API error codes, position modes, and WS key constants.
+  </Card>
+</CardGroup>

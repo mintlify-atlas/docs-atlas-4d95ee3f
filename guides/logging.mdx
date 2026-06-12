@@ -1,0 +1,222 @@
+---
+title: "Configure Logging in bybit-api"
+sidebarTitle: "Logging"
+description: "Customize bybit-api log output by providing a custom logger with trace, info, and error methods, or extend the DefaultLogger."
+---
+
+The `bybit-api` SDK uses a simple, pluggable logger interface. By default, `info` and `error` messages are printed to the console via `console.info` and `console.error`. Trace-level messages — such as raw ping/pong frames and internal reconnect events — are silenced by default but can be enabled for debugging. You can replace the logger entirely, selectively override methods, or suppress all output.
+
+## The DefaultLogger
+
+The SDK exports a `DefaultLogger` object with three methods that match the full logger interface:
+
+```typescript
+export const DefaultLogger = {
+  /** Ping/pong events and other raw messages that might be noisy. Disabled by default. */
+  trace: (..._params: any): void => {
+    // no-op by default
+  },
+  info: (...params: any): void => {
+    console.info(params);
+  },
+  error: (...params: any): void => {
+    console.error(params);
+  },
+};
+```
+
+- **`trace`** — verbose internal events: ping/pong heartbeats, raw WebSocket frames, subscription bookkeeping. Silent by default.
+- **`info`** — connection lifecycle messages: connections opened, subscriptions confirmed, reconnects completed.
+- **`error`** — errors and unexpected states that require attention.
+
+---
+
+## Passing a Custom Logger
+
+Both `RestClientV5` and `WebsocketClient` accept a logger as a constructor argument. The logger must implement `trace`, `info`, and `error` methods.
+
+### WebsocketClient
+
+Pass the logger as the **second argument** to `WebsocketClient`:
+
+```typescript
+import { WebsocketClient, DefaultLogger } from 'bybit-api';
+
+const customLogger = {
+  ...DefaultLogger,
+  trace: (...params: any[]) => console.log('[TRACE]', ...params),
+};
+
+const ws = new WebsocketClient(
+  { key: 'xxx', secret: 'yyy' },
+  customLogger,
+);
+```
+
+### RestClientV5
+
+The REST client uses the same logger interface but receives it inside the first options object (there is no dedicated logger parameter — use the `BYBITTRACE` env var for HTTP-level debugging instead). For WebSocket-level logging, the `WebsocketClient` constructor is the primary place to inject a logger.
+
+---
+
+## Enabling Trace-Level Logging
+
+The most common customisation is enabling `trace` output to see what the WebSocket client is doing internally. Spread `DefaultLogger` and override the `trace` method:
+
+```typescript
+import { WebsocketClient, DefaultLogger } from 'bybit-api';
+
+const verboseLogger = {
+  ...DefaultLogger,
+  trace: (...params: any[]) => console.log('trace', ...params),
+};
+
+const ws = new WebsocketClient(
+  { key: 'xxx', secret: 'yyy' },
+  verboseLogger,
+);
+```
+
+With `trace` enabled you will see:
+
+- Heartbeat ping/pong frames
+- Subscription request/response cycles
+- Raw message parsing
+- Reconnect timing and state transitions
+
+<Tip>
+  Enable trace logging when diagnosing unexpected disconnects, missed messages, or authentication failures on the WebSocket client. Disable it in production to avoid high log volume.
+</Tip>
+
+---
+
+## Suppressing All Logs
+
+To run the SDK silently — for example in test suites — provide no-op functions for all three methods:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const silentLogger = {
+  trace: () => {},
+  info:  () => {},
+  error: () => {},
+};
+
+const ws = new WebsocketClient(
+  { key: 'xxx', secret: 'yyy' },
+  silentLogger,
+);
+```
+
+---
+
+## Routing Logs to a Structured Logger
+
+You can route SDK output to any structured logging library such as `pino` or `winston` by mapping the three methods:
+
+<CodeGroup>
+
+```typescript pino
+import { WebsocketClient } from 'bybit-api';
+import pino from 'pino';
+
+const logger = pino({ level: 'debug' });
+
+const sdkLogger = {
+  trace: (...params: any[]) => logger.trace({ params }, 'bybit-api trace'),
+  info:  (...params: any[]) => logger.info({ params },  'bybit-api info'),
+  error: (...params: any[]) => logger.error({ params }, 'bybit-api error'),
+};
+
+const ws = new WebsocketClient({ key: 'xxx', secret: 'yyy' }, sdkLogger);
+```
+
+```typescript winston
+import { WebsocketClient } from 'bybit-api';
+import winston from 'winston';
+
+const logger = winston.createLogger({
+  level: 'debug',
+  transports: [new winston.transports.Console()],
+});
+
+const sdkLogger = {
+  trace: (...params: any[]) => logger.debug({ params }),
+  info:  (...params: any[]) => logger.info({ params }),
+  error: (...params: any[]) => logger.error({ params }),
+};
+
+const ws = new WebsocketClient({ key: 'xxx', secret: 'yyy' }, sdkLogger);
+```
+
+</CodeGroup>
+
+---
+
+## Debugging Raw HTTP Requests with BYBITTRACE
+
+For situations where you need to inspect the exact HTTP request the REST client is sending — including headers, signed parameters, and the raw response body — set the `BYBITTRACE` environment variable before running your process:
+
+```bash
+BYBITTRACE=true node your-script.js
+```
+
+When `BYBITTRACE` is set, the SDK installs an axios response interceptor that logs the following for every HTTP response:
+
+- Request URL, method, headers, and body/params
+- Response status code, headers, and data
+
+Example output:
+
+```
+2024-01-15T10:30:00.000Z Response: {
+  request: {
+    url: 'https://api.bybit.com/v5/order/create',
+    method: 'post',
+    data: '{"category":"linear","symbol":"BTCUSDT",...}',
+    headers: { 'X-BAPI-API-KEY': 'xxx', 'X-BAPI-SIGN': '...', ... },
+    params: undefined
+  },
+  response: {
+    status: 200,
+    statusText: 'OK',
+    headers: { ... },
+    data: { retCode: 0, retMsg: 'OK', result: { ... } }
+  }
+}
+```
+
+<Warning>
+  `BYBITTRACE` prints your API key, request signatures, and all response data to stdout. Only enable it in local development environments. Never enable it in production or in any environment with shared log aggregation.
+</Warning>
+
+---
+
+## Production Logging Recommendations
+
+<CardGroup cols={1}>
+  <Card title="Keep trace disabled">
+    Leave `trace` as a no-op in production. The volume of ping/pong and frame events will flood your log pipeline and obscure meaningful signals.
+  </Card>
+  <Card title="Always log errors">
+    Ensure `error` is routed to a durable log destination or alerting system. WebSocket exceptions and API errors surfaced at the `error` level indicate conditions that may require intervention.
+  </Card>
+  <Card title="Add context to log entries">
+    When building multi-account or multi-symbol systems, include an account or connection identifier in each log call so you can correlate events across connections.
+  </Card>
+  <Card title="Never enable BYBITTRACE in production">
+    The `BYBITTRACE` interceptor logs raw API keys and secrets. Restrict its use to local debugging only.
+  </Card>
+</CardGroup>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Configuration" href="/guides/configuration">
+    Full reference for RestClientV5 and WebsocketClient options
+  </Card>
+  <Card title="Error Handling" href="/guides/error-handling">
+    Handle API errors and interpret response codes
+  </Card>
+</CardGroup>

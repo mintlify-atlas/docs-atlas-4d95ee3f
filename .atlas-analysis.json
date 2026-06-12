@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "bybit-api",
+  "projectType": "sdk-library",
+  "projectName": "bybit-api",
+  "projectDescription": "A complete Node.js/TypeScript SDK for Bybit's REST APIs, WebSocket streams, and WebSocket API, with automatic authentication, reconnect logic, and full TypeScript typings.",
   "theme": "luma",
-  "colors": {
-    "primary": "#0d152d",
-    "light": "#848c94",
-    "dark": "#c9cacf"
-  },
-  "favicon": "https://media.brand.dev/9af7ca08-5ac3-49fd-9432-5a2e6574303c.svg",
-  "logo": {
-    "light": "https://media.brand.dev/74afcedb-15a5-48fa-81f6-92d9c570adc6.svg",
-    "dark": "https://media.brand.dev/1964742a-4107-4ee0-b925-4e79b3624e89.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/tiagosiebler/bybit-api"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/tiagosiebler/bybit-api"
-    }
-  },
+  "primaryColor": "#0d152d",
+  "lightColor": "#848c94",
+  "darkColor": "#c9cacf",
   "navigation": {
     "tabs": [
       {
@@ -89,5 +72,36 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Unified V5 REST client covering all Bybit API categories (spot, linear, inverse, option)",
+    "WebSocket client with automatic authentication, heartbeats, and reconnect-then-resubscribe",
+    "Promise-driven WebsocketAPIClient for submitting orders over WebSocket like a REST API",
+    "Higher API rate limits (400 req/s) automatically applied for all SDK users",
+    "Full TypeScript support with thorough request and response type declarations",
+    "HMAC and RSA authentication auto-detection",
+    "Multi-region support: global, bytick, EU, NL, TK, KZ, HK, GE, UAE domains",
+    "Browser support via webpack bundle or direct import with stream-browserify",
+    "LLM/AI integration via bundled llms.txt file",
+    "Proxy support via axios integration"
+  ],
+  "publicApiSurface": [
+    "RestClientV5",
+    "WebsocketClient",
+    "WebsocketAPIClient",
+    "SpotClientV3",
+    "WS_KEY_MAP",
+    "DefaultLogger",
+    "API_ERROR_CODE",
+    "RestClientOptions",
+    "WSClientConfigurableOptions",
+    "CategoryV5",
+    "OrderParamsV5",
+    "AmendOrderParamsV5",
+    "CancelOrderParamsV5",
+    "BatchOrderParamsV5",
+    "WSAPIOperation",
+    "WsKey",
+    "WsTopic"
+  ]
 }

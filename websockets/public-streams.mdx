@@ -1,0 +1,354 @@
+---
+title: "Public WebSocket Streams — Real-Time Market Data from Bybit"
+sidebarTitle: "Public Streams"
+description: "Subscribe to real-time orderbook, kline, trade, ticker, and liquidation streams from Bybit using WebsocketClient.subscribeV5()."
+---
+
+Public WebSocket streams deliver real-time market data — orderbooks, klines, trades, tickers, liquidations — without any authentication. The `WebsocketClient` routes each subscription to the correct category-specific endpoint automatically. You provide the topic string and the `category`; the SDK handles connections, heartbeats, and reconnects.
+
+## How Public Streams Work
+
+Call `subscribeV5(topic, category)` with any public topic string. The `category` parameter is required for public topics because Bybit exposes a separate WebSocket endpoint per product group:
+
+| Category | WsKey used | Endpoint |
+|---|---|---|
+| `'spot'` | `v5SpotPublic` | `wss://stream.bybit.com/v5/public/spot` |
+| `'linear'` | `v5LinearPublic` | `wss://stream.bybit.com/v5/public/linear` |
+| `'inverse'` | `v5InversePublic` | `wss://stream.bybit.com/v5/public/inverse` |
+| `'option'` | `v5OptionPublic` | `wss://stream.bybit.com/v5/public/option` |
+
+All topic updates arrive on the `update` event. The parsed payload always contains a `topic` string, a `type` (`snapshot` or `delta`), a `ts` timestamp, and a `data` field with the topic-specific payload. An additional `wsKey` property is injected by the SDK so you can identify which connection the message came from.
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  console.log('topic:', data.topic);
+  console.log('type:', data.type);   // 'snapshot' | 'delta'
+  console.log('data:', data.data);
+  console.log('wsKey:', data.wsKey); // e.g. 'v5LinearPublic'
+});
+
+wsClient.on('open', ({ wsKey }) => console.log('Connected:', wsKey));
+wsClient.on('response', (data) => console.log('Response:', JSON.stringify(data)));
+wsClient.on('exception', (err) => console.error('Exception:', err));
+```
+
+## Unsubscribing
+
+Call `unsubscribeV5(topic, category)` at any time. The topic is removed from the internal tracker and will not be resubscribed after a reconnect:
+
+```typescript
+wsClient.unsubscribeV5('orderbook.50.BTCUSDT', 'linear');
+
+// Or unsubscribe from multiple topics at once
+wsClient.unsubscribeV5(
+  ['kline.5.BTCUSDT', 'kline.5.ETHUSDT'],
+  'spot',
+);
+```
+
+---
+
+## Available Public Topics
+
+### Orderbook
+
+Subscribe to the order book for a symbol. Bybit pushes an initial `snapshot` then incremental `delta` updates. The `depth` controls the number of price levels returned.
+
+**Topic format:** `orderbook.{depth}.{symbol}`
+
+| Depth | Available for |
+|---|---|
+| `1` | spot, linear, inverse, option |
+| `50` | spot, linear, inverse, option |
+| `200` | spot, linear, inverse |
+| `500` | spot, linear, inverse |
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  if (data.topic.startsWith('orderbook')) {
+    const { s, b, a, u, seq } = data.data;
+    // s = symbol, b = bids [[price, qty]], a = asks [[price, qty]]
+    // u = update ID, seq = cross sequence
+    console.log(`Orderbook ${s}: best bid ${b[0]?.[0]}, best ask ${a[0]?.[0]}`);
+  }
+});
+
+// Single depth level — top of book only
+wsClient.subscribeV5('orderbook.1.BTCUSDT', 'linear');
+
+// 50-level orderbook
+wsClient.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+
+// Multiple symbols in one call
+wsClient.subscribeV5(
+  ['orderbook.50.BTCUSDT', 'orderbook.50.ETHUSDT'],
+  'linear',
+);
+
+// Spot orderbook
+wsClient.subscribeV5('orderbook.50.BTCUSDT', 'spot');
+
+// Inverse
+wsClient.subscribeV5('orderbook.50.BTCUSD', 'inverse');
+
+// Option
+wsClient.subscribeV5('orderbook.25.BTC-29NOV24-100000-C', 'option');
+```
+
+<Note>
+  The first message for each orderbook topic is always a full `snapshot`. Subsequent messages are `delta` updates. Your application must apply deltas to the snapshot to maintain an accurate local order book. A `delta` entry with `qty: "0"` means that price level should be removed.
+</Note>
+
+---
+
+### Tickers
+
+The ticker stream provides a 24-hour rolling summary for a symbol: last price, 24h high/low, volume, funding rate, open interest, and more. The first message is a full `snapshot`; subsequent messages are `delta` updates containing only changed fields.
+
+**Topic format:** `tickers.{symbol}`
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  if (data.topic.startsWith('tickers')) {
+    // Linear/inverse ticker fields include: lastPrice, markPrice, indexPrice,
+    // fundingRate, nextFundingTime, openInterest, volume24h, turnover24h
+    console.log('Ticker update:', data.topic, data.data);
+  }
+});
+
+// Linear perp ticker
+wsClient.subscribeV5('tickers.BTCUSDT', 'linear');
+
+// Inverse perp ticker
+wsClient.subscribeV5('tickers.BTCUSD', 'inverse');
+
+// Spot ticker
+wsClient.subscribeV5('tickers.BTCUSDT', 'spot');
+
+// Option ticker
+wsClient.subscribeV5('tickers.BTC-29NOV24-100000-C', 'option');
+```
+
+---
+
+### Kline (Candlesticks)
+
+Kline data provides OHLCV candlesticks at a chosen interval. Each update is a `snapshot` containing the latest (possibly unconfirmed) candle. The `confirm` field in the data is `true` when the candle closes.
+
+**Topic format:** `kline.{interval}.{symbol}`
+
+| Interval | Meaning |
+|---|---|
+| `1`, `3`, `5`, `15`, `30` | Minutes |
+| `60`, `120`, `240`, `360`, `720` | Minutes (1h, 2h, 4h, 6h, 12h) |
+| `D` | Daily |
+| `W` | Weekly |
+| `M` | Monthly |
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  if (data.topic.startsWith('kline')) {
+    for (const candle of data.data) {
+      // candle: { start, end, interval, open, high, low, close, volume, turnover, confirm, timestamp }
+      if (candle.confirm) {
+        console.log(`Closed candle [${data.topic}]:`, candle);
+      }
+    }
+  }
+});
+
+// 5-minute klines for multiple symbols on spot
+wsClient.subscribeV5(
+  ['kline.5.BTCUSDT', 'kline.5.ETHUSDT', 'kline.5.XRPUSDT'],
+  'spot',
+);
+
+// 1-hour klines on linear
+wsClient.subscribeV5('kline.60.BTCUSDT', 'linear');
+
+// Daily klines on inverse
+wsClient.subscribeV5('kline.D.BTCUSD', 'inverse');
+```
+
+---
+
+### Public Trades
+
+The public trade stream delivers every trade executed on the exchange in real time. Each message is a `snapshot` containing an array of trade objects.
+
+**Topic format:** `publicTrade.{symbol}`
+
+For options, you subscribe per base asset (e.g. `publicTrade.BTC`) rather than per contract.
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  if (data.topic.startsWith('publicTrade')) {
+    for (const trade of data.data) {
+      // trade: { T (timestamp), s (symbol), S (side), v (qty), p (price),
+      //          i (tradeId), BT (block trade flag) }
+      console.log(`Trade on ${trade.s}: ${trade.S} ${trade.v} @ ${trade.p}`);
+    }
+  }
+});
+
+// Spot trade stream
+wsClient.subscribeV5('publicTrade.BTCUSDT', 'spot');
+
+// Linear trade stream
+wsClient.subscribeV5('publicTrade.BTCUSDT', 'linear');
+
+// Inverse trade stream
+wsClient.subscribeV5('publicTrade.BTCUSD', 'inverse');
+
+// Options trade stream (subscribe per base asset, not per contract)
+wsClient.subscribeV5('publicTrade.BTC', 'option');
+```
+
+---
+
+### Liquidation
+
+The liquidation stream pushes forced-liquidation events as they occur. Only available for linear and inverse perpetuals/futures.
+
+**Topic format:** `liquidation.{symbol}`
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  if (data.topic.startsWith('liquidation')) {
+    for (const liq of data.data) {
+      // liq: { T (timestamp), s (symbol), S (side), v (qty), p (price) }
+      console.log(`Liquidation on ${liq.s}: ${liq.S} ${liq.v} @ ${liq.p}`);
+    }
+  }
+});
+
+// Subscribe to liquidations for a specific symbol
+wsClient.subscribeV5('liquidation.BTCUSDT', 'linear');
+wsClient.subscribeV5('liquidation.BTCUSD', 'inverse');
+```
+
+<Tip>
+  To monitor liquidations across **all** symbols, fetch the full symbol list via `RestClientV5.getTickers()`, generate a topic per symbol, and pass the array to `subscribeV5`. The spot limit is 10 topics per subscribe event; other categories allow up to 500.
+</Tip>
+
+```typescript
+import { RestClientV5, WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+const restClient = new RestClientV5();
+
+async function subscribeAllLiquidations() {
+  const linearResult = await restClient.getTickers({ category: 'linear' });
+  const inverseResult = await restClient.getTickers({ category: 'inverse' });
+
+  const linearTopics = linearResult.result.list.map(
+    (t) => `liquidation.${t.symbol}`,
+  );
+  const inverseTopics = inverseResult.result.list.map(
+    (t) => `liquidation.${t.symbol}`,
+  );
+
+  wsClient.subscribeV5(linearTopics, 'linear');
+  wsClient.subscribeV5(inverseTopics, 'inverse');
+}
+
+wsClient.on('update', (data) => {
+  console.log('Liquidation event:', JSON.stringify(data));
+});
+
+subscribeAllLiquidations();
+```
+
+---
+
+### Long/Short Ratio (Leveraged Token NAV)
+
+The `lt.{symbol}.nav` stream is available for linear only and provides NAV (net asset value) data for leveraged tokens.
+
+**Topic format:** `lt.{symbol}.nav`
+
+```typescript
+wsClient.subscribeV5('lt.BTC3LUSDT.nav', 'linear');
+```
+
+---
+
+## Complete Public Stream Example
+
+The following example subscribes to multiple topic types and demonstrates how to branch by topic prefix inside the `update` handler:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const wsClient = new WebsocketClient();
+
+wsClient.on('update', (data) => {
+  const { topic } = data;
+
+  if (topic.startsWith('orderbook')) {
+    console.log('Orderbook update:', topic, data.type);
+  } else if (topic.startsWith('publicTrade')) {
+    console.log('Trades:', topic, data.data.length, 'trades');
+  } else if (topic.startsWith('kline')) {
+    console.log('Kline:', topic, data.data);
+  } else if (topic.startsWith('tickers')) {
+    console.log('Ticker:', topic, data.data);
+  } else if (topic.startsWith('liquidation')) {
+    console.log('Liquidation:', topic, data.data);
+  }
+});
+
+wsClient.on('open', ({ wsKey }) => console.log('Connected:', wsKey));
+wsClient.on('response', (data) => console.log('Response:', JSON.stringify(data, null, 2)));
+wsClient.on('reconnect', ({ wsKey }) => console.log('Reconnecting:', wsKey));
+wsClient.on('reconnected', ({ wsKey }) => console.log('Reconnected:', wsKey));
+wsClient.on('exception', (err) => console.error('Exception:', err));
+
+// Public topics — no credentials needed
+wsClient.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+wsClient.subscribeV5('publicTrade.BTCUSDT', 'linear');
+wsClient.subscribeV5('kline.5.BTCUSDT', 'spot');
+wsClient.subscribeV5('tickers.BTCUSDT', 'spot');
+wsClient.subscribeV5('liquidation.BTCUSDT', 'linear');
+
+// Unsubscribe from a topic after 30 seconds
+setTimeout(() => {
+  wsClient.unsubscribeV5('kline.5.BTCUSDT', 'spot');
+  console.log('Unsubscribed from kline');
+}, 30_000);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Private Streams" icon="lock" href="/websockets/private-streams">
+    Subscribe to position, order, execution, and wallet updates for your account.
+  </Card>
+  <Card title="WebSocket API" icon="bolt" href="/websockets/websocket-api">
+    Submit and manage orders over WebSocket with a REST-like promise interface.
+  </Card>
+</CardGroup>

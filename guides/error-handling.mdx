@@ -1,0 +1,237 @@
+---
+title: "Handle Errors and API Response Codes in bybit-api"
+sidebarTitle: "Error Handling"
+description: "Interpret Bybit API error codes, handle rejected promises, and use the API_ERROR_CODE constants from bybit-api for robust error handling."
+---
+
+Every response from the Bybit REST API includes a `retCode` field. A value of `0` means the request succeeded. Any other value indicates an API-level error, with additional detail in the `retMsg` field. Network-level failures and HTTP errors (non-2xx status codes) are surfaced as rejected promises so you can handle both layers cleanly with `try/catch`.
+
+## REST Error Handling Pattern
+
+The SDK wraps axios and normalises errors. By default, a successful HTTP response (status 200) with a non-zero `retCode` is **not** thrown automatically — it is returned as a resolved value. This lets you inspect `retCode` on your own terms.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({ key: 'xxx', secret: 'yyy' });
+
+async function placeOrder() {
+  try {
+    const result = await client.submitOrder({
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      orderType: 'Market',
+      qty: '0.001',
+      side: 'Buy',
+    });
+
+    if (result.retCode !== 0) {
+      // API-level error: request reached Bybit but was rejected
+      console.error(`API error ${result.retCode}: ${result.retMsg}`);
+      return;
+    }
+
+    console.log('Order placed:', result.result);
+  } catch (err) {
+    // Network error or non-200 HTTP response
+    console.error('Request failed:', err);
+  }
+}
+```
+
+<Tip>
+  Set `throwExceptions: true` in the client options to make the SDK automatically throw for non-zero `retCode` values. This simplifies handlers when you prefer a uniform `try/catch` flow.
+</Tip>
+
+### Automatic Exception Throwing
+
+```typescript
+const client = new RestClientV5({
+  key: 'xxx',
+  secret: 'yyy',
+  throwExceptions: true,
+});
+
+try {
+  const result = await client.submitOrder({ /* ... */ });
+  console.log('Order placed:', result.result);
+} catch (err) {
+  // Both network errors and API errors land here
+  console.error('Error:', err);
+}
+```
+
+---
+
+## The `API_ERROR_CODE` Enum
+
+The SDK exports `API_ERROR_CODE`, a typed constant map of known Bybit error codes. Using these constants prevents hard-coded magic numbers in your error handlers and enables IDE autocomplete.
+
+```typescript
+import { API_ERROR_CODE } from 'bybit-api';
+
+if (result.retCode === API_ERROR_CODE.V5_INSUFFICIENT_BALANCE) {
+  console.warn('Not enough balance to execute the order.');
+}
+```
+
+### Key Error Codes
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `SUCCESS` | `0` | Request succeeded |
+| `PARAMS_MISSING_OR_WRONG` | `10001` | Bad request — wrong or missing parameter values; also reused for several unchanged-state errors |
+| `INVALID_API_KEY_OR_PERMISSIONS` | `10003` | API key is invalid or lacks required permissions |
+| `SIGNATURE_NOT_VALID` | `10004` | Request signature could not be verified |
+| `INCORRECT_API_KEY_PERMISSIONS` | `10005` | API key exists but does not have the required permission scope |
+| `INCORRECT_API_REQUEST_IP` | `10010` | Request IP is not in the API key's IP whitelist |
+| `ACCOUNT_NOT_UNIFIED` | `10020` | Account must be upgraded to Unified Margin to use this endpoint |
+| `COMPLIANCE_RULES_TRIGGERED` | `10024` | Compliance rules prevented this action |
+| `UNKNOWN_ERROR` | `12000` | Unspecified server-side error |
+| `V5_ORDER_NOT_FOUND` | `110001` | The specified order does not exist (V5 API) |
+| `V5_INSUFFICIENT_BALANCE` | `110007` | Insufficient balance for the requested operation (V5 API) |
+| `V5_API_KEY_PERMISSION_DENIED` | `10005` | API key permission denied (V5 API) |
+| `V5_CROSS_ISOLATED_MARGIN_NOT_CHANGED` | `110026` | Margin mode was not changed because it is already set to the requested value |
+| `V5_LEVERAGE_NOT_CHANGED` | `110043` | Leverage was not changed because it already matches the requested value |
+| `QTY_EXCEEDS_MAX_LIMIT` | `130006` | Order quantity exceeds the maximum allowed for this contract |
+| `ORDER_COST_NOT_AVAILABLE` | `130021` | Insufficient available order cost (linear) |
+| `TRANSFER_ID_EXISTS` | `131214` | A transfer with this ID already exists |
+| `NOT_SUPPORTED_FOR_SUBACCOUNTS` | `131003` | Operation is not supported for sub-accounts |
+
+<Note>
+  Some error codes (such as `10001`) are reused by Bybit across multiple scenarios — for example, unchanged-state errors for TP/SL, risk ID, and auto-add-margin all map to `10001`. Always check `retMsg` alongside `retCode` for a precise diagnosis.
+</Note>
+
+---
+
+## Typed Error Handling by Code
+
+Combining `API_ERROR_CODE` with a switch statement keeps error handling readable and exhaustive:
+
+```typescript
+import { RestClientV5, API_ERROR_CODE } from 'bybit-api';
+
+const client = new RestClientV5({ key: 'xxx', secret: 'yyy' });
+
+async function getBalance() {
+  try {
+    const res = await client.getWalletBalance({ accountType: 'UNIFIED' });
+
+    switch (res.retCode) {
+      case API_ERROR_CODE.SUCCESS:
+        return res.result;
+
+      case API_ERROR_CODE.INVALID_API_KEY_OR_PERMISSIONS:
+        throw new Error('Check your API key and its permission settings.');
+
+      case API_ERROR_CODE.INCORRECT_API_REQUEST_IP:
+        throw new Error('Your IP is not whitelisted for this API key.');
+
+      case API_ERROR_CODE.ACCOUNT_NOT_UNIFIED:
+        throw new Error('Upgrade your account to Unified Margin to use this endpoint.');
+
+      default:
+        throw new Error(`Unexpected API error ${res.retCode}: ${res.retMsg}`);
+    }
+  } catch (networkErr) {
+    console.error('Network or HTTP error:', networkErr);
+    throw networkErr;
+  }
+}
+```
+
+---
+
+## WebSocket Error Events
+
+The `WebsocketClient` emits an `exception` event whenever a connection-level or subscription-level error occurs. Always register a listener for this event to prevent unhandled error crashes.
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({ key: 'xxx', secret: 'yyy' });
+
+// Always listen for exceptions
+ws.on('exception', (err) => {
+  console.error('WebSocket exception:', err);
+});
+
+// Other lifecycle events
+ws.on('open', ({ wsKey }) => {
+  console.log('Connection opened:', wsKey);
+});
+
+ws.on('reconnect', ({ wsKey }) => {
+  console.log('Reconnecting:', wsKey);
+});
+
+ws.on('reconnected', ({ wsKey }) => {
+  console.log('Reconnected:', wsKey);
+});
+
+ws.subscribeV5(['position', 'order', 'wallet'], 'linear');
+```
+
+<Warning>
+  Failing to listen to the `exception` event on a `WebsocketClient` will cause unhandled error events that crash Node.js processes using the default EventEmitter behaviour.
+</Warning>
+
+---
+
+## Debugging Raw HTTP Requests
+
+Set the `BYBITTRACE` environment variable to any truthy value to log the full HTTP response — including request URL, method, headers, and body — to the console for every API call. This is useful when diagnosing signature failures or unexpected parameter serialisation.
+
+```bash
+BYBITTRACE=true node your-script.js
+```
+
+This activates an axios response interceptor inside the SDK that prints structured output for every response:
+
+```
+2024-01-15T10:30:00.000Z Response: {
+  request: { url: '...', method: 'POST', data: '...', headers: {...}, params: {...} },
+  response: { status: 200, statusText: 'OK', headers: {...}, data: {...} }
+}
+```
+
+<Note>
+  `BYBITTRACE` is intended for local debugging only. Do not enable it in production — it will print API keys, signatures, and potentially sensitive response data to stdout.
+</Note>
+
+---
+
+## Common Errors and Fixes
+
+<CardGroup cols={1}>
+  <Card title="Signature Not Valid (10004)">
+    The HMAC or RSA signature could not be verified. Common causes:
+
+    - Wrong API secret — double-check you are using the secret that matches your key
+    - System clock skew — enable `enable_time_sync: true` or set `syncTimeBeforePrivateRequests: true`
+    - Proxy latency pushing timestamps outside the `recv_window` — increase `recv_window` to `10000` or more
+  </Card>
+  <Card title="IP Not Whitelisted (10010)">
+    Your API key has an IP restriction and the request is coming from an unlisted address. Either add your IP in the Bybit API management panel, or create a key without IP restriction for dynamic-IP environments.
+  </Card>
+  <Card title="Incorrect Permissions (10003 / 10005)">
+    The API key does not have the required permission scope for the endpoint. Check the key's read/trade/transfer permissions on the Bybit API management page and ensure they match what the endpoint requires.
+  </Card>
+  <Card title="Recv Window Too Small">
+    The timestamp on the request arrived outside the acceptable window on the server. Increase `recv_window` (e.g. `10000` ms) and consider enabling time synchronisation.
+  </Card>
+  <Card title="Account Not Unified (10020)">
+    The endpoint requires a Unified Margin or Unified Trading account. Upgrade your account in the Bybit dashboard before calling V5 endpoints that require unified margin.
+  </Card>
+</CardGroup>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Configuration" href="/guides/configuration">
+    Set recv window, throwExceptions, and other client options
+  </Card>
+  <Card title="Logging" href="/guides/logging">
+    Enable trace logging and HTTP request debugging
+  </Card>
+</CardGroup>

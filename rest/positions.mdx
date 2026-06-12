@@ -1,0 +1,289 @@
+---
+title: "Position Management Endpoints — Bybit V5 REST API"
+sidebarTitle: "Positions"
+description: "Manage leverage, margin mode, take-profit/stop-loss, and position history using RestClientV5 position management methods."
+---
+
+Position management endpoints are authenticated and apply primarily to `linear` (USDT/USDC perpetuals and futures), `inverse` (coin-margined contracts), and `option` categories. Spot positions are also accessible for some query methods. All methods require a `RestClientV5` instance initialised with valid API credentials.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.API_KEY,
+  secret: process.env.API_SECRET,
+});
+```
+
+---
+
+## Query Positions
+
+### `getPositionInfo`
+
+Fetch your current open positions. Filter by category, symbol, or settle coin. Results are paginated.
+
+```typescript
+// All linear positions
+const positions = await client.getPositionInfo({
+  category: 'linear',
+});
+
+// Specific symbol
+const btcPos = await client.getPositionInfo({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+});
+
+positions.result.list.forEach((pos) => {
+  console.log(
+    pos.symbol,
+    pos.side,              // 'Buy' | 'Sell' | 'None'
+    pos.size,              // position size
+    pos.avgPrice,          // average entry price
+    pos.unrealisedPnl,
+    pos.leverage,
+    pos.positionIdx,       // 0 = one-way, 1 = hedge Buy side, 2 = hedge Sell side
+  );
+});
+```
+
+---
+
+## Leverage
+
+### `setLeverage`
+
+Set the leverage for a specific linear or inverse symbol. You must specify both buy-side and sell-side leverage (they can be equal for one-way mode).
+
+```typescript
+const result = await client.setLeverage({
+  category: 'linear',  // 'linear' | 'inverse'
+  symbol: 'BTCUSDT',
+  buyLeverage: '10',   // leverage as string
+  sellLeverage: '10',
+});
+
+if (result.retCode === 0) {
+  console.log('Leverage updated');
+}
+```
+
+<Warning>
+  Changing leverage while you have an open position may trigger margin calls or liquidations if the new leverage increases required margin. Always verify your available margin before adjusting.
+</Warning>
+
+---
+
+## Margin Mode
+
+### `switchIsolatedMargin`
+
+Switch a symbol between cross margin (`tradeMode: 0`) and isolated margin (`tradeMode: 1`). You must also set the initial leverage when switching.
+
+```typescript
+// Switch to isolated margin at 5x leverage
+await client.switchIsolatedMargin({
+  category: 'linear',  // 'linear' | 'inverse'
+  symbol: 'BTCUSDT',
+  tradeMode: 1,        // 0 = cross margin, 1 = isolated margin
+  buyLeverage: '5',
+  sellLeverage: '5',
+});
+```
+
+### `addOrReduceMargin`
+
+Manually add or reduce margin for an isolated margin position. Provide a positive `margin` to add, or a negative value to reduce.
+
+```typescript
+// Add 100 USDT margin to BTCUSDT isolated position
+await client.addOrReduceMargin({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  margin: '100',   // positive = add, negative = reduce
+});
+```
+
+### `setAutoAddMargin`
+
+Enable or disable automatic margin top-up for a linear isolated position. When enabled, Bybit will automatically add margin from your available balance to prevent liquidation.
+
+```typescript
+await client.setAutoAddMargin({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  autoAddMargin: 1,    // 1 = enable, 0 = disable
+  positionIdx: 0,      // optional: 0 = one-way, 1 = hedge Buy, 2 = hedge Sell
+});
+```
+
+---
+
+## Take Profit / Stop Loss
+
+### `setTPSLMode`
+
+Set whether TP/SL applies to the entire position (`Full`) or can be set for partial quantities (`Partial`).
+
+```typescript
+await client.setTPSLMode({
+  category: 'linear',  // 'linear' | 'inverse'
+  symbol: 'BTCUSDT',
+  tpSlMode: 'Full',    // 'Full' | 'Partial'
+});
+```
+
+### `setTradingStop`
+
+Set or update the take profit, stop loss, and/or trailing stop for an existing open position.
+
+```typescript
+await client.setTradingStop({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  positionIdx: 0,         // Required: 0 = one-way, 1 = hedge Buy, 2 = hedge Sell
+  takeProfit: '72000',    // TP trigger price
+  stopLoss: '58000',      // SL trigger price
+  trailingStop: '500',    // optional trailing stop distance in price units
+  tpTriggerBy: 'MarkPrice', // 'LastPrice' | 'IndexPrice' | 'MarkPrice'
+  slTriggerBy: 'MarkPrice',
+  tpslMode: 'Full',       // 'Full' | 'Partial'
+});
+```
+
+<Tip>
+  To remove an existing TP or SL, pass `"0"` as the value for `takeProfit` or `stopLoss` respectively.
+</Tip>
+
+---
+
+## Position Mode
+
+### `switchPositionMode`
+
+Switch between one-way mode (`mode: 0`) and hedge mode (`mode: 3`) for a linear or inverse category. Hedge mode allows simultaneous long and short positions on the same symbol.
+
+```typescript
+// Switch BTCUSDT to hedge mode
+await client.switchPositionMode({
+  category: 'linear',  // 'linear' | 'inverse'
+  symbol: 'BTCUSDT',   // use symbol for a single pair, or coin for all pairs of that coin
+  mode: 3,             // 0 = one-way mode, 3 = hedge mode
+});
+```
+
+<Note>
+  You can only switch position mode when you have no open positions or active orders for the affected symbol.
+</Note>
+
+---
+
+## Risk Limits
+
+### `setRiskLimit`
+
+Set the risk limit tier for a position. Higher tiers allow larger positions but require higher margin rates.
+
+```typescript
+await client.setRiskLimit({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  riskId: 2,           // tier ID from getRiskLimit()
+  positionIdx: 0,      // optional
+});
+```
+
+### `confirmNewRiskLimit`
+
+After your position size crosses into a new risk tier (due to price changes), Bybit may place the position in a pending state. Call this to confirm and accept the new maintenance margin requirement.
+
+```typescript
+await client.confirmNewRiskLimit({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+});
+```
+
+---
+
+## Closed PnL
+
+### `getClosedPnL`
+
+Query the realised profit and loss history for closed positions.
+
+```typescript
+const pnl = await client.getClosedPnL({
+  category: 'linear',
+  symbol: 'BTCUSDT',   // optional
+  startTime: Date.now() - 30 * 24 * 60 * 60 * 1000, // last 30 days
+  endTime: Date.now(),
+  limit: 50,
+  cursor: undefined,
+});
+
+pnl.result.list.forEach((record) => {
+  console.log(
+    record.symbol,
+    record.side,
+    record.closedSize,
+    record.closedPnl,
+    record.fillCount,
+    record.createdTime,
+  );
+});
+```
+
+### `getClosedOptionsPositions`
+
+Query expired and closed options positions.
+
+```typescript
+const closedOptions = await client.getClosedOptionsPositions({
+  category: 'option',
+  symbol: 'BTC-25DEC25-100000-C', // optional
+  startTime: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  limit: 20,
+});
+```
+
+---
+
+## Move Positions
+
+Move position endpoints allow you to transfer open positions between two UIDs within the same master account structure (institutional/broker accounts).
+
+### `movePosition`
+
+Transfer one or more open positions from one UID to another.
+
+```typescript
+const move = await client.movePosition({
+  fromUid: '100000001',
+  toUid: '100000002',
+  list: [
+    {
+      category: 'linear',
+      symbol: 'BTCUSDT',
+      price: '65000',   // transfer price
+      side: 'Buy',      // the side of the position to move
+      qty: '0.5',
+    },
+  ],
+});
+```
+
+### `getMovePositionHistory`
+
+Query the history of position moves.
+
+```typescript
+const moveHistory = await client.getMovePositionHistory({
+  category: 'linear',
+  symbol: 'BTCUSDT',
+  status: 'Filled',    // 'Processing' | 'Filled' | 'Rejected'
+  startTime: Date.now() - 7 * 24 * 60 * 60 * 1000,
+  limit: 20,
+});
+```

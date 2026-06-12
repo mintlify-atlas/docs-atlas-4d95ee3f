@@ -1,0 +1,238 @@
+---
+title: "Configure bybit-api REST and WebSocket Clients"
+sidebarTitle: "Configuration"
+description: "All configuration options for RestClientV5 and WebsocketClient including API keys, regions, proxy support, recv window, and custom URLs."
+---
+
+Both `RestClientV5` and `WebsocketClient` accept a plain configuration object as their first constructor argument. You can start with an empty object for public endpoints and add credentials and other settings incrementally as your integration grows.
+
+## RestClientV5 Options
+
+The REST client configuration is defined by the `RestClientOptions` interface. Pass it as the first argument to `new RestClientV5(options, networkOptions)`. The optional second argument accepts any [Axios request config](https://axios-http.com/docs/req_config) fields such as proxy settings.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: 'your-api-key',
+  secret: 'your-api-secret',
+  testnet: false,
+  recv_window: 5000,
+  parseAPIRateLimits: true,
+});
+```
+
+### Authentication
+
+<ParamField path="key" type="string">
+  Your Bybit API key. Both HMAC and RSA key types are automatically detected and supported. Required for all private endpoints.
+</ParamField>
+
+<ParamField path="secret" type="string">
+  Your Bybit API secret (or RSA private key string). Must be provided whenever `key` is set; providing one without the other will throw at construction time.
+</ParamField>
+
+### Environment Selection
+
+<ParamField path="testnet" type="boolean" default="false">
+  Set to `true` to direct all requests to `api-testnet.bybit.com`. Testnet credentials are separate from live credentials and must be created at [testnet.bybit.com](https://testnet.bybit.com/app/user/api-management).
+</ParamField>
+
+<ParamField path="demoTrading" type="boolean" default="false">
+  Set to `true` to route requests to Bybit's [demo trading](https://bybit-exchange.github.io/docs/v5/demo) environment. Uses your live credentials but simulates P&L. Do not combine with `testnet: true`.
+</ParamField>
+
+### Regional Domain Routing
+
+<ParamField path="apiRegion" type="'default' | 'bytick' | 'NL' | 'TK' | 'KZ' | 'HK' | 'GE' | 'UAE' | 'EU'">
+  Route API requests to a regional Bybit domain. When omitted the SDK uses `api.bybit.com`. See the [Environments guide](/guides/environments) for the full domain map.
+</ParamField>
+
+<ParamField path="baseUrl" type="string">
+  Fully override the base URL, e.g. `'https://api5.bybit.com'`. Takes precedence over `apiRegion`. Useful for custom proxy endpoints or domains not yet represented in `apiRegion`.
+</ParamField>
+
+### Request Timing
+
+<ParamField path="recv_window" type="number" default="5000">
+  Maximum allowed gap in milliseconds between the timestamp on a signed request and the server's current time. Increase this value (e.g. `10000`) when using a proxy or VPN that adds latency. The Bybit API enforces a hard maximum of 10 000 ms.
+</ParamField>
+
+<ParamField path="enable_time_sync" type="boolean" default="false">
+  When `true`, the client will query the Bybit server time on startup and periodically thereafter to compensate for local clock drift. Useful on machines with inconsistent system clocks.
+</ParamField>
+
+<ParamField path="sync_interval_ms" type="number | string" default="3600000">
+  How often (in milliseconds) to re-sync time drift with Bybit servers when `enable_time_sync` is enabled. Defaults to one hour.
+</ParamField>
+
+<ParamField path="syncTimeBeforePrivateRequests" type="boolean" default="false">
+  When `true`, the client fetches and re-calculates the server time offset before every private API call instead of relying on the periodic sync interval.
+</ParamField>
+
+### Response Handling
+
+<ParamField path="parseAPIRateLimits" type="boolean" default="false">
+  When `true`, per-endpoint rate limit headers are parsed and added to every response object under the `rateLimitApi` key. Useful for building adaptive rate-limit strategies.
+</ParamField>
+
+<ParamField path="throwOnFailedRateLimitParse" type="boolean" default="false">
+  When `true` (and `parseAPIRateLimits` is also `true`), the client throws an error if the rate limit header parser fails rather than silently returning `undefined`.
+</ParamField>
+
+<ParamField path="throwExceptions" type="boolean" default="false">
+  When `true`, the client automatically throws the response object for any API call that returns a non-zero `retCode`, so you can use a simple `try/catch` instead of manually checking `retCode`.
+</ParamField>
+
+<ParamField path="parse_exceptions" type="boolean" default="true">
+  When `false`, HTTP and network errors are re-thrown as-is without the SDK's normalisation layer. Disable only if you need raw Axios error objects.
+</ParamField>
+
+### Connection & Performance
+
+<ParamField path="keepAlive" type="boolean" default="false">
+  Enable HTTP keep-alive on the underlying `https.Agent`. Reduces TCP handshake overhead for high-frequency REST polling. Node.js only — has no effect in browser builds.
+</ParamField>
+
+<ParamField path="keepAliveMsecs" type="number" default="1000">
+  When `keepAlive` is `true`, sets the interval (in ms) between TCP keep-alive probes. Defaults to the Node.js `https.Agent` default of 1000 ms.
+</ParamField>
+
+### Signing
+
+<ParamField path="encodeSerialisedValues" type="boolean" default="true">
+  URI-encode parameter values during the signing process. Introduced to fix rare signature failures caused by cursor values containing `%` characters. Only disable this if you have a specific compatibility reason.
+</ParamField>
+
+<ParamField path="strict_param_validation" type="boolean" default="false">
+  When `true`, the SDK throws an error if any request parameter resolves to `undefined` rather than silently omitting it from the query string.
+</ParamField>
+
+<ParamField path="customSignMessageFn" type="(message: string, secret: string) => Promise<string>">
+  Provide a custom signing function to replace the default Web Crypto API implementation. For example, use Node.js `crypto.createHmac` for significantly faster HMAC signing in high-throughput scenarios. See `examples/fasterHmacSign.ts` in the repository for a complete demonstration.
+</ParamField>
+
+### Proxy Configuration
+
+Proxy settings are passed as the **second** argument to the `RestClientV5` constructor via the standard Axios config shape:
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5(
+  {
+    key: process.env.API_KEY,
+    secret: process.env.API_SECRET,
+    // Increase recv window to account for extra proxy latency
+    recv_window: 10000,
+  },
+  {
+    proxy: {
+      protocol: 'http',
+      host: 'proxyhost',
+      port: 8080,
+      auth: {
+        username: 'proxyuser',
+        password: 'proxypass',
+      },
+    },
+  },
+);
+```
+
+<Note>
+  Some proxy services are not compatible with Axios's native proxy config. If requests fail through a proxy, try using `https-proxy-agent` as shown in `examples/Rest/rest-v5-proxies2.ts`.
+</Note>
+
+---
+
+## WebsocketClient Options
+
+The WebSocket client configuration is defined by the `WSClientConfigurableOptions` interface. Pass it as the first argument to `new WebsocketClient(options, logger)`. The optional second argument is a custom logger object.
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({
+  key: 'your-api-key',
+  secret: 'your-api-secret',
+  pingInterval: 10000,
+  pongTimeout: 1000,
+  reconnectTimeout: 500,
+});
+```
+
+### Authentication
+
+<ParamField path="key" type="string">
+  Your Bybit API key. Only required for private topics (orders, positions, wallet, etc.) or WebSocket API calls.
+</ParamField>
+
+<ParamField path="secret" type="string">
+  Your Bybit API secret or RSA private key. Required when `key` is provided.
+</ParamField>
+
+### Environment Selection
+
+<ParamField path="testnet" type="boolean" default="false">
+  Connect to Bybit's testnet WebSocket endpoints. Do not combine with `demoTrading: true`.
+</ParamField>
+
+<ParamField path="demoTrading" type="boolean" default="false">
+  Connect to Bybit's demo trading WebSocket endpoints. Uses live credentials. Supported for private topics (`order`, `execution`, `position`, `wallet`, `greeks`).
+</ParamField>
+
+### Connection Health
+
+<ParamField path="pingInterval" type="number" default="10000">
+  How often (in milliseconds) to send a ping frame to check that the connection is still alive. Bybit requires a heartbeat at least every 20 seconds; the default of 10 000 ms provides a comfortable margin.
+</ParamField>
+
+<ParamField path="pongTimeout" type="number" default="1000">
+  How long (in milliseconds) to wait for a pong response after sending a ping before treating the connection as dead and initiating a reconnect.
+</ParamField>
+
+<ParamField path="reconnectTimeout" type="number" default="500">
+  Delay in milliseconds before spawning a new connection after an unexpected disconnect. After reconnecting, the client automatically re-authenticates and re-subscribes to all previously active topics.
+</ParamField>
+
+### URL Override & Recv Window
+
+<ParamField path="wsUrl" type="string">
+  Fully override the WebSocket endpoint URL, e.g. `'wss://stream.bytick.com/realtime'`. Useful for custom routing or regional failover.
+</ParamField>
+
+<ParamField path="recvWindow" type="number" default="5000">
+  Recv window (in milliseconds) used when generating the private WebSocket authentication signature. Increase on high-latency connections such as VPNs.
+</ParamField>
+
+### Advanced
+
+<ParamField path="promiseSubscribeRequests" type="boolean" default="false">
+  When `true`, calls to `subscribeV5()` return a `Promise` that resolves when the subscription is confirmed by the server. Note: subscriptions are sent in batches internally, so behaviour may vary when subscribing to many topics at once.
+</ParamField>
+
+<ParamField path="customSignMessageFn" type="(message: string, secret: string) => Promise<string>">
+  Custom signing function, identical in purpose to the REST client option. Useful for Node.js `crypto.createHmac`-based performance improvements.
+</ParamField>
+
+<ParamField path="wsOptions" type="object">
+  Low-level options passed directly to the underlying `isomorphic-ws` constructor, such as `agent` for proxy support or `protocols` for subprotocol negotiation.
+</ParamField>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Environments" href="/guides/environments">
+    Switch between live, testnet, demo trading, and regional domains
+  </Card>
+  <Card title="Error Handling" href="/guides/error-handling">
+    Handle API errors, rate limits, and network failures
+  </Card>
+  <Card title="Logging" href="/guides/logging">
+    Customise log output with a custom logger or the DefaultLogger
+  </Card>
+  <Card title="Browser Usage" href="/guides/browser-usage">
+    Bundle bybit-api for browser and frontend projects
+  </Card>
+</CardGroup>

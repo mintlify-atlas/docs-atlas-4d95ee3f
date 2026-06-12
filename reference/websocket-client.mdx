@@ -1,0 +1,455 @@
+---
+title: "WebsocketClient — Bybit WebSocket Streams Reference"
+sidebarTitle: "WebsocketClient"
+description: "Full reference for WebsocketClient: subscription methods, event emitter API, connection management, and WS API raw request sending."
+---
+
+`WebsocketClient` is the primary real-time data client for the bybit-api SDK. It manages all WebSocket connections to Bybit V5 public and private streams, automatically handles authentication, reconnects on network failures, and batches subscription requests. It also exposes the low-level `sendWSAPIRequest()` method for sending order-management commands over WebSocket.
+
+## Installation & Import
+
+```bash
+npm install bybit-api
+```
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+```
+
+## Constructor
+
+```typescript
+const ws = new WebsocketClient(options?, logger?);
+```
+
+<ParamField body="options" type="WSClientConfigurableOptions" optional>
+  WebSocket client configuration. All fields are optional.
+
+  <Expandable title="WSClientConfigurableOptions fields">
+    <ParamField body="key" type="string" optional>Your API key (required for private topics and WS API).</ParamField>
+    <ParamField body="secret" type="string" optional>Your API secret.</ParamField>
+    <ParamField body="testnet" type="boolean" optional>Connect to Bybit testnet. Default `false`. Note: use `demoTrading` for demo environments instead.</ParamField>
+    <ParamField body="demoTrading" type="boolean" optional>Connect to Bybit V5 demo trading. Default `false`.</ParamField>
+    <ParamField body="market" type="APIMarket" optional>API market group. Currently only `'v5'` is supported (default).</ParamField>
+    <ParamField body="recvWindow" type="number" optional>Receive window for private WS auth signature in milliseconds. Default `5000`.</ParamField>
+    <ParamField body="pingInterval" type="number" optional>Milliseconds between heartbeat ping sends.</ParamField>
+    <ParamField body="pongTimeout" type="number" optional>Milliseconds to wait for a pong before treating the connection as dead.</ParamField>
+    <ParamField body="reconnectTimeout" type="number" optional>Milliseconds to wait before attempting a reconnect.</ParamField>
+    <ParamField body="wsUrl" type="string" optional>Override the WebSocket URL.</ParamField>
+    <ParamField body="promiseSubscribeRequests" type="boolean" optional>If `true`, subscription calls return promises. Default `false`.</ParamField>
+    <ParamField body="customSignMessageFn" type="(message: string, secret: string) => Promise<string>" optional>Custom HMAC signing function.</ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="logger" type="DefaultLogger" optional>
+  Optional custom logger instance. If omitted, the SDK's built-in console logger is used.
+</ParamField>
+
+### Instantiation examples
+
+<CodeGroup>
+```typescript Public streams only
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient();
+```
+
+```typescript Public + private streams
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+});
+```
+
+```typescript Testnet
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({
+  key: 'YOUR_API_KEY',
+  secret: 'YOUR_API_SECRET',
+  testnet: true,
+});
+```
+</CodeGroup>
+
+---
+
+## Connection Management Methods
+
+### `subscribeV5(wsTopics, category, isPrivateTopic?)`
+
+Subscribe to one or more V5 WebSocket topics. The SDK automatically routes each topic to the correct underlying connection (spot public, linear public, inverse public, option public, or private) based on the `category` and whether the topic is private.
+
+```typescript
+subscribeV5(
+  wsTopics: WsTopic[] | WsTopic,
+  category: CategoryV5,
+  isPrivateTopic?: boolean,
+): Promise<unknown>[]
+```
+
+<ParamField body="wsTopics" type="WsTopic | WsTopic[]" required>
+  One or more topic strings to subscribe to, e.g. `'orderbook.50.BTCUSDT'`.
+</ParamField>
+<ParamField body="category" type="CategoryV5" required>
+  The instrument category: `'spot' | 'linear' | 'inverse' | 'option'`. Ignored for private topics.
+</ParamField>
+<ParamField body="isPrivateTopic" type="boolean" optional>
+  Force the topic to be treated as private. Usually not needed — the SDK detects private topics automatically.
+</ParamField>
+
+```typescript
+// Subscribe to linear order book
+ws.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+
+// Subscribe to multiple topics at once
+ws.subscribeV5(['orderbook.50.BTCUSDT', 'publicTrade.BTCUSDT'], 'linear');
+
+// Subscribe to private order updates
+ws.subscribeV5('order', 'linear');
+```
+
+---
+
+### `unsubscribeV5(wsTopics, category, isPrivateTopic?)`
+
+Unsubscribe from one or more V5 topics and remove them from the reconnect cache. The SDK will not re-subscribe to these topics if the connection drops.
+
+```typescript
+unsubscribeV5(
+  wsTopics: WsTopic[] | WsTopic,
+  category: CategoryV5,
+  isPrivateTopic?: boolean,
+): Promise<unknown>[]
+```
+
+<ParamField body="wsTopics" type="WsTopic | WsTopic[]" required>Topic or topics to unsubscribe from.</ParamField>
+<ParamField body="category" type="CategoryV5" required>The instrument category.</ParamField>
+<ParamField body="isPrivateTopic" type="boolean" optional>Force private topic detection override.</ParamField>
+
+---
+
+### `connectAll()`
+
+Eagerly open every dependent WebSocket connection (all public streams + private stream) rather than waiting for the first subscription call. Returns an array of connection promises.
+
+```typescript
+connectAll(): Promise<WSConnectedResult | undefined>[]
+```
+
+```typescript
+await Promise.all(ws.connectAll());
+console.log('All connections ready');
+```
+
+---
+
+### `connectPublic()`
+
+Open all V5 public WebSocket connections (spot, linear, inverse, option) without connecting the private stream.
+
+```typescript
+connectPublic(): Promise<WSConnectedResult | undefined>[]
+```
+
+---
+
+### `connectPrivate()`
+
+Open the V5 private WebSocket connection.
+
+```typescript
+connectPrivate(): Promise<WebSocket | undefined>
+```
+
+---
+
+### `connectWSAPI()`
+
+Open and authenticate the V5 private trade WebSocket connection used for WS API order management. This connection must be authenticated before any `sendWSAPIRequest()` calls. Calling this in advance can reduce latency on the first order placement.
+
+```typescript
+connectWSAPI(): Promise<unknown>
+```
+
+```typescript
+await ws.connectWSAPI();
+console.log('WS API connection ready');
+```
+
+---
+
+### `subscribe(requests, requestedWsKey?)`
+
+Lower-level subscription method that accepts `WsTopicRequest` objects or plain topic strings with optional explicit WsKey routing. Consider using `subscribeV5()` for most use-cases.
+
+```typescript
+subscribe(
+  requests: (WsTopicRequest<WsTopic> | WsTopic) | (WsTopicRequest<WsTopic> | WsTopic)[],
+  requestedWsKey?: WsKey,
+): void
+```
+
+---
+
+### `unsubscribe(requests, wsKey?)`
+
+Lower-level unsubscription counterpart to `subscribe()`.
+
+```typescript
+unsubscribe(
+  requests: (WsTopicRequest<WsTopic> | WsTopic) | (WsTopicRequest<WsTopic> | WsTopic)[],
+  wsKey?: WsKey,
+): void
+```
+
+---
+
+## Event Emitter API
+
+`WebsocketClient` extends an event emitter. Attach listeners with `.on(event, handler)`. The primary data events are listed below.
+
+<Note>
+  Always attach `.on('update', handler)` before calling any subscribe method to ensure you don't miss the first messages.
+</Note>
+
+### `update`
+
+Fired for every incoming market-data or private stream message. This is the main data event.
+
+```typescript
+ws.on('update', (data) => {
+  console.log('WS update:', data.topic, data.data);
+});
+```
+
+<ResponseField name="data" type="object">
+  Parsed JSON of the incoming WebSocket message. The `topic` property identifies which stream produced the event.
+</ResponseField>
+
+---
+
+### `open`
+
+Fired when a WebSocket connection is successfully opened.
+
+```typescript
+ws.on('open', ({ wsKey, event }) => {
+  console.log('Connection opened:', wsKey);
+});
+```
+
+<ResponseField name="wsKey" type="WsKey">Key identifying which connection opened.</ResponseField>
+<ResponseField name="event" type="Event">Raw WebSocket open event.</ResponseField>
+
+---
+
+### `response`
+
+Fired in response to a subscribe/unsubscribe request or ping/pong. Used to confirm that a subscription was accepted.
+
+```typescript
+ws.on('response', (response) => {
+  console.log('WS response:', response);
+});
+```
+
+---
+
+### `authenticated`
+
+Fired after the private WebSocket connection successfully authenticates.
+
+```typescript
+ws.on('authenticated', ({ wsKey }) => {
+  console.log('Authenticated on:', wsKey);
+});
+```
+
+---
+
+### `close`
+
+Fired when a connection closes.
+
+```typescript
+ws.on('close', ({ wsKey, event }) => {
+  console.log('Connection closed:', wsKey);
+});
+```
+
+---
+
+### `exception`
+
+Fired when an error occurs. Inspect `data` for details.
+
+```typescript
+ws.on('exception', (data) => {
+  console.error('WS exception:', data);
+});
+```
+
+---
+
+### `reconnect`
+
+Fired when the SDK begins a reconnect attempt.
+
+```typescript
+ws.on('reconnect', ({ wsKey }) => {
+  console.log('Reconnecting:', wsKey);
+});
+```
+
+---
+
+### `reconnected`
+
+Fired when the SDK has successfully reconnected and re-subscribed to all tracked topics.
+
+```typescript
+ws.on('reconnected', ({ wsKey }) => {
+  console.log('Reconnected:', wsKey);
+});
+```
+
+---
+
+## WS API — `sendWSAPIRequest()`
+
+Send a command over the authenticated WS API connection and receive a typed promise that resolves with the exchange's reply.
+
+```typescript
+sendWSAPIRequest<TWSKey, TWSOperation, TWSParams>(
+  wsKey: TWSKey,
+  operation: TWSOperation,
+  params?: TWSParams,
+  requestFlags?: WSAPIRequestFlags,
+): Promise<WsAPIOperationResponseMap[TWSOperation]>
+```
+
+<ParamField body="wsKey" type="WsKey" required>
+  The connection key. Use `WS_KEY_MAP.v5PrivateTrade` for all Bybit V5 WS API operations.
+</ParamField>
+<ParamField body="operation" type="WSAPIOperation" required>
+  The WS API command string. One of: `'order.create' | 'order.amend' | 'order.cancel' | 'order.create-batch' | 'order.amend-batch' | 'order.cancel-batch'`.
+</ParamField>
+<ParamField body="params" type="object" optional>
+  Request parameters matching the operation. For `order.create` this is `OrderParamsV5`.
+</ParamField>
+<ParamField body="requestFlags" type="WSAPIRequestFlags" optional>
+  `{ authIsOptional?: boolean }` — skip auth requirement if `true`.
+</ParamField>
+
+The promise rejects if:
+- The WS API response contains a non-zero `retCode`.
+- The connection closes before a reply is received.
+
+```typescript
+import { WebsocketClient, WS_KEY_MAP } from 'bybit-api';
+
+const ws = new WebsocketClient({ key: 'YOUR_KEY', secret: 'YOUR_SECRET' });
+
+const result = await ws.sendWSAPIRequest(
+  WS_KEY_MAP.v5PrivateTrade,
+  'order.create',
+  {
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    side: 'Buy',
+    orderType: 'Limit',
+    qty: '0.01',
+    price: '30000',
+    timeInForce: 'GTC',
+  },
+);
+
+console.log('Order ID:', result.data.orderId);
+```
+
+---
+
+## WS_KEY_MAP — Connection Keys
+
+The `WS_KEY_MAP` constant maps human-readable names to the string keys used internally by the SDK. Import it to reference specific connections.
+
+```typescript
+import { WS_KEY_MAP } from 'bybit-api';
+```
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `WS_KEY_MAP.v5SpotPublic` | `'v5SpotPublic'` | V5 spot public market data stream. |
+| `WS_KEY_MAP.v5LinearPublic` | `'v5LinearPublic'` | V5 linear (USDT/USDC perp & futures) public stream. |
+| `WS_KEY_MAP.v5InversePublic` | `'v5InversePublic'` | V5 inverse (BTC-margined) public stream. |
+| `WS_KEY_MAP.v5OptionPublic` | `'v5OptionPublic'` | V5 options public stream. |
+| `WS_KEY_MAP.v5Private` | `'v5Private'` | V5 private stream (orders, positions, wallet). |
+| `WS_KEY_MAP.v5PrivateTrade` | `'v5PrivateTrade'` | V5 WebSocket API connection for order management. |
+
+---
+
+## Complete Usage Example
+
+<Steps>
+  <Step title="Create the client">
+    ```typescript
+    import { WebsocketClient } from 'bybit-api';
+
+    const ws = new WebsocketClient({
+      key: 'YOUR_API_KEY',
+      secret: 'YOUR_API_SECRET',
+    });
+    ```
+  </Step>
+  <Step title="Attach event listeners">
+    ```typescript
+    ws.on('update', (data) => {
+      // All market data and private events arrive here
+      console.log(data.topic, data.data);
+    });
+
+    ws.on('open', ({ wsKey }) => console.log('open', wsKey));
+    ws.on('reconnected', ({ wsKey }) => console.log('reconnected', wsKey));
+    ws.on('exception', (data) => console.error('error', data));
+    ```
+  </Step>
+  <Step title="Subscribe to topics">
+    ```typescript
+    // Public: real-time BTC order book (linear)
+    ws.subscribeV5('orderbook.50.BTCUSDT', 'linear');
+
+    // Public: BTC recent trades
+    ws.subscribeV5('publicTrade.BTCUSDT', 'linear');
+
+    // Private: order status updates
+    ws.subscribeV5('order', 'linear');
+
+    // Private: wallet balance updates
+    ws.subscribeV5('wallet', 'linear');
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Do not set `testnet: true` when using demo trading (`demoTrading: true`). These are separate environments.
+</Warning>
+
+---
+
+<CardGroup cols={2}>
+  <Card title="WebsocketAPIClient" href="/reference/websocket-api-client">
+    Higher-level promise wrapper for WS order management.
+  </Card>
+  <Card title="Types Reference" href="/reference/types">
+    WsKey, WsTopic, WSAPIOperation, and all configuration types.
+  </Card>
+  <Card title="Enums & Constants" href="/reference/enums">
+    WS_KEY_MAP values and WS_API_Operations array.
+  </Card>
+  <Card title="RestClientV5" href="/reference/rest-client-v5">
+    Full REST API method reference.
+  </Card>
+</CardGroup>

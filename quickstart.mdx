@@ -1,47 +1,245 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with bybit-api in Under 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Install bybit-api, configure API keys, and make your first REST and WebSocket calls to Bybit's trading platform in minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you from a blank project to a working Bybit integration. You will install the SDK, create API credentials, load them safely via environment variables, fetch public market data, authenticate a private REST call, and subscribe to a live WebSocket stream.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before you begin, make sure you have the following installed:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+- **Node.js 16 or later** — check with `node --version`
+- **npm**, **yarn**, or **pnpm** — any one of them works
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+### Install bybit-api
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+Add the SDK to your project using your preferred package manager:
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+<CodeGroup>
+
+```bash npm
+npm install bybit-api
+```
+
+```bash yarn
+yarn add bybit-api
+```
+
+```bash pnpm
+pnpm add bybit-api
+```
+
+</CodeGroup>
+
+### Create API keys on Bybit
+
+Public market data calls do not require API keys. For any private endpoint — account info, order placement, position reads — you will need credentials.
+
+Create API keys from the relevant Bybit dashboard:
+
+- **Live environment**: [bybit.com — API Management](https://bybit.com/app/user/api-management?affiliate_id=9410&language=en-US&group_id=0&group_type=1)
+- **Testnet environment**: [testnet.bybit.com — API Management](https://testnet.bybit.com/app/user/api-management)
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  Use **testnet keys** while developing. Testnet is a safe sandbox where you can verify endpoint connectivity and permissions without any risk to real funds. When you are ready to go live, swap in your live credentials.
 </Tip>
+
+<Warning>
+  Always grant the minimum permissions your integration actually needs. A market-data monitor does not need trading permissions. A trading bot does not need withdrawal permissions. Use IP whitelisting whenever your deployment environment allows it.
+</Warning>
+
+### Set environment variables
+
+Never hardcode API credentials in source files. Store them in environment variables instead:
+
+```bash
+export BYBIT_API_KEY="your-api-key-here"
+export BYBIT_API_SECRET="your-api-secret-here"
+```
+
+For local development you can use a `.env` file and a package like [`dotenv`](https://www.npmjs.com/package/dotenv):
+
+```bash
+# .env
+BYBIT_API_KEY=your-api-key-here
+BYBIT_API_SECRET=your-api-secret-here
+```
+
+```typescript
+import 'dotenv/config';
+import { RestClientV5 } from 'bybit-api';
+```
+
+### Make your first public REST call
+
+Public market data endpoints do not require API credentials. Instantiate `RestClientV5` with no arguments to make public calls:
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+// No credentials needed for public market data
+const client = new RestClientV5();
+
+async function main() {
+  // Fetch the current BTCUSDT order book (linear perpetual)
+  const orderBook = await client.getOrderbook({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    limit: 50,
+  });
+  console.log('Order book:', orderBook.result);
+
+  // Fetch the latest ticker for BTCUSDT
+  const ticker = await client.getTickers({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+  });
+  console.log('Ticker:', ticker.result.list[0]);
+
+  // Fetch recent 5-minute candles
+  const candles = await client.getKline({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+    interval: '5',
+    limit: 5,
+  });
+  console.log('Candles:', candles.result.list);
+}
+
+main().catch(console.error);
+```
+
+Run it:
+
+```bash
+npx ts-node main.ts
+# or, for plain JavaScript:
+node main.js
+```
+
+### Make your first authenticated REST call
+
+Provide your API key and secret in the constructor. The SDK automatically attaches timestamps and HMAC signatures to every private request — you never need to sign requests manually.
+
+```typescript
+import { RestClientV5 } from 'bybit-api';
+
+const client = new RestClientV5({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+  // Uncomment to use the testnet environment:
+  // testnet: true,
+});
+
+async function main() {
+  // Fetch account information (private endpoint — requires credentials)
+  const accountInfo = await client.getAccountInfo();
+  console.log('Account info:', accountInfo.result);
+
+  // Fetch UNIFIED wallet balance
+  const wallet = await client.getWalletBalance({
+    accountType: 'UNIFIED',
+  });
+  console.log('Wallet balance:', wallet.result.list[0]);
+
+  // Fetch open positions for BTCUSDT linear perpetual
+  const positions = await client.getPositionInfo({
+    category: 'linear',
+    symbol: 'BTCUSDT',
+  });
+  console.log('Positions:', positions.result.list);
+}
+
+main().catch(console.error);
+```
+
+### Subscribe to a WebSocket stream
+
+The `WebsocketClient` manages all WebSocket connections for you — it handles connecting, authenticating, heartbeats, reconnections, and resubscriptions automatically. Attach event listeners, then call `subscribeV5` with the topics you want.
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+// Public WebSocket — no credentials required for public topics
+const ws = new WebsocketClient();
+
+// Listen for streaming data
+ws.on('update', (data) => {
+  console.log('Stream update:', JSON.stringify(data, null, 2));
+});
+
+// Optional: connection lifecycle events
+ws.on('open', ({ wsKey }) => {
+  console.log('Connection opened:', wsKey);
+});
+
+ws.on('response', (response) => {
+  console.log('Subscribe response:', response);
+});
+
+ws.on('reconnect', ({ wsKey }) => {
+  console.log('Reconnecting:', wsKey);
+});
+
+ws.on('reconnected', ({ wsKey }) => {
+  console.log('Reconnected:', wsKey);
+});
+
+// Log errors
+ws.on('exception', (err) => {
+  console.error('WebSocket error:', err);
+});
+
+// Subscribe to public topics on the linear (USDT perpetual) market
+ws.subscribeV5(
+  ['orderbook.50.BTCUSDT', 'publicTrade.BTCUSDT', 'tickers.BTCUSDT'],
+  'linear',
+);
+```
+
+For private account streams, add your credentials and subscribe to private topics:
+
+```typescript
+import { WebsocketClient } from 'bybit-api';
+
+const ws = new WebsocketClient({
+  key: process.env.BYBIT_API_KEY,
+  secret: process.env.BYBIT_API_SECRET,
+});
+
+ws.on('authenticated', ({ wsKey }) => {
+  console.log('Authenticated:', wsKey);
+});
+
+ws.on('update', (data) => {
+  console.log('Account event:', JSON.stringify(data, null, 2));
+});
+
+ws.on('exception', console.error);
+
+// Subscribe to private account topics
+ws.subscribeV5(['order', 'execution', 'position', 'wallet'], 'linear');
+```
+
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn how HMAC and RSA key types work, configure recvWindow, and set up environment variables securely.
+  </Card>
+  <Card title="REST API" icon="server" href="/rest/overview">
+    Browse all RestClientV5 methods — market data, order management, positions, wallet, and more.
+  </Card>
+  <Card title="WebSockets" icon="wifi" href="/websockets/overview">
+    Explore all public and private stream topics and learn how to use the WebSocket API for order commands.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Tune recv_window, enable rate-limit parsing, configure regional domains, and set up keep-alive connections.
+  </Card>
+</CardGroup>
